@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 
 enum _Kind { location, item, search }
@@ -18,7 +19,7 @@ class StockPage extends StatefulWidget {
 
 class _StockPageState extends State<StockPage> with ScanPageMixin {
   @override
-  String get moduleName => 'mod.stock';
+  String get moduleName => 'wms.inventory';
 
   _Kind? _kind;
   String _query = '';
@@ -70,7 +71,7 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
       await _loadRows(reset: true);
       if (_rows.isEmpty) {
         app.device.error();
-        _error = tr('common.notFound', {'code': code});
+        _error = tr('pda.notFound', {'code': code});
         log(code, Outcome.warn, 'nothing found');
       } else {
         app.device.ok();
@@ -127,7 +128,7 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
     try {
       await _loadRows();
     } catch (e) {
-      if (mounted) toast(context, errorText(e), tone: Tone.error);
+      if (mounted) toast(context, errorText(e), type: ElType.danger);
     } finally {
       if (mounted) setState(() => _loadingMore = false);
     }
@@ -135,10 +136,10 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
 
   String _statusText(dynamic s) {
     final v = asInt(s);
-    if (v <= 1) return tr('stk.st0');
-    if (v == 2) return tr('stk.st2');
-    if (v == 5) return tr('stk.st5');
-    if (v == 10) return tr('stk.st10');
+    if (v <= 1) return 'Invalid';
+    if (v == 2) return 'Damaged';
+    if (v == 5) return 'Receiving';
+    if (v == 10) return 'Valid';
     return '$v';
   }
 
@@ -147,44 +148,40 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
     final sum = _rows.fold<int>(0, (a, r) => a + asInt(r['quantity']));
     final locked = _rows.fold<int>(0, (a, r) => a + asInt(r['lockedQty']));
     return ScanScaffold(
-      title: tr('mod.stock'),
-      prompt: tr('stk.scan'),
+      title: tr('wms.inventory'),
+      placeholder: tr('pda.stk.scan'),
       busy: busy,
       onManual: manualEntry,
       children: [
-        if (_error.isNotEmpty) StatusCard(tone: Tone.error, title: _error),
-        if (_kind == null && _error.isEmpty) StatusCard(tone: Tone.info, title: tr('common.waitScan'), subtitle: tr('stk.scan')),
+        if (_error.isNotEmpty) ElResult(type: ElType.danger, title: _error),
+        if (_kind == null && _error.isEmpty) ElResult(type: ElType.info, title: tr('pda.stk.scan')),
         if (_kind == _Kind.location)
-          StatusCard(
-            tone: Tone.ok,
-            title: tr('stk.location', {'name': asStr(_head['name'])}),
-            subtitle: [
+          ElAlert(
+            type: ElType.success,
+            title: '${tr('common.location')}: ${asStr(_head['name'])}',
+            description: [
               asStr(_head['warehouseUNID']),
-              if (asStr(_head['zoneCode']).isNotEmpty) '${tr('stk.zone')}: ${asStr(_head['zoneCode'])}',
-              tr('stk.sum', {'n': sum}),
+              if (asStr(_head['zoneCode']).isNotEmpty) 'Zone: ${asStr(_head['zoneCode'])}',
+              '${tr('common.quantity')}: $sum',
             ].where((s) => s.isNotEmpty).join(' · '),
           ),
         if (_kind == _Kind.item) ...[
-          StatusCard(
-            tone: Tone.ok,
-            title: tr('stk.item', {'sku': asStr(_head['unid'])}),
-            subtitle: asStr(_head['name']),
-          ),
-          InfoSection(rows: [
+          ElAlert(type: ElType.success, title: '${tr('common.item')}: ${asStr(_head['unid'])}', description: asStr(_head['name'])),
+          ElDescriptions(items: [
             (tr('common.customer'), app.session.customerName(asStr(_head['agentGUID']))),
-            (tr('stk.barcode'), asStr(_head['barcode'])),
-            (tr('stk.weight'), asStr(_head['weight']).isEmpty ? '' : '${asStr(_head['weight'])} kg'),
-            (tr('common.qty'), '${tr('stk.sum', {'n': sum})}   ${tr('stk.locked', {'n': locked})}'),
+            ('Barcode', asStr(_head['barcode'])),
+            ('Weight', asStr(_head['weight']).isEmpty ? '' : '${asStr(_head['weight'])} kg'),
+            (tr('common.quantity'), '$sum  (Locked: $locked)'),
           ]),
         ],
-        if (_kind == _Kind.search) StatusCard(tone: Tone.info, title: tr('stk.search', {'q': _query}), subtitle: tr('stk.sum', {'n': sum})),
+        if (_kind == _Kind.search) ElAlert(type: ElType.info, title: '${tr('common.search')}: $_query', description: '${tr('common.quantity')}: $sum'),
         if (_rows.isNotEmpty)
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          ElCard(
+            padding: EdgeInsets.zero,
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                child: Text('${tr('stk.rows')} · ${tr('common.total', {'n': _kind == _Kind.item ? _rows.length : _total})}',
+                child: Text('${tr('wms.inventory')} · ${tr('pda.total', {'n': _kind == _Kind.item ? _rows.length : _total})}',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               for (final r in _rows) _row(r),
@@ -193,7 +190,7 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
                   onPressed: _loadingMore ? null : _more,
                   child: _loadingMore
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(tr('stk.loadMore')),
+                      : Text(tr('pda.loadMore')),
                 ),
             ]),
           ),
@@ -216,21 +213,21 @@ class _StockPageState extends State<StockPage> with ScanPageMixin {
               Text(asStr(r['itemName']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
             if (showLoc)
               Text('${asStr(r['warehouse'])} » ${asStr(r['compartment'])}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1565C0))),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: El.primary)),
             Text(
               [
-                if (asStr(r['itemBatch']).isNotEmpty) '${tr('common.batch')}: ${asStr(r['itemBatch'])}',
+                if (asStr(r['itemBatch']).isNotEmpty) 'Batch: ${asStr(r['itemBatch'])}',
                 _statusText(st),
                 if (asStr(r['customer']).isNotEmpty) asStr(r['customer']),
               ].join(' · '),
-              style: TextStyle(fontSize: 12, color: st == 10 ? const Color(0xFF666666) : const Color(0xFFC62828)),
+              style: TextStyle(fontSize: 12, color: st == 10 ? El.textSecondary : El.danger),
             ),
           ]),
         ),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text('${asInt(r['quantity'])}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           if (asInt(r['lockedQty']) > 0)
-            Text(tr('stk.locked', {'n': asInt(r['lockedQty'])}), style: const TextStyle(fontSize: 11, color: Color(0xFFEF6C00))),
+            Text('Locked: ${asInt(r['lockedQty'])}', style: const TextStyle(fontSize: 11, color: Color(0xFFEF6C00))),
         ]),
       ]),
     );

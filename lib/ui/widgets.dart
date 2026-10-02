@@ -4,23 +4,25 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/device.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
 import '../core/net_monitor.dart';
+import 'el.dart';
 
 /// Human readable, localized message for any error thrown by the API layer.
 String errorText(Object e) {
   if (e is ApiException) {
     switch (e.kind) {
       case FailKind.notSent:
-        return tr('err.network.notSent');
+        return tr('pda.err.notSent');
       case FailKind.unknown:
-        return tr('err.network.unknown');
+        return tr('pda.err.unknown');
       case FailKind.auth:
-        return tr('err.auth');
+        return tr('pda.err.auth');
       case FailKind.server:
-        if (e.code == 'HTTP400') return tr('err.http400');
-        return tr('err.server', {'code': e.code});
+        if (e.code == 'HTTP400') return tr('pda.err.http400');
+        return tr('pda.err.server', {'code': e.code});
       case FailKind.business:
         return e.message.isNotEmpty ? e.message : e.code;
     }
@@ -28,114 +30,11 @@ String errorText(Object e) {
   return '$e';
 }
 
-Outcome outcomeOf(Object e) {
-  if (e is ApiException && e.kind == FailKind.unknown) return Outcome.unknown;
-  return Outcome.error;
-}
+bool isUnknown(Object e) => e is ApiException && e.kind == FailKind.unknown;
 
-enum Tone { info, ok, warn, error, unknown }
+Outcome outcomeOf(Object e) => isUnknown(e) ? Outcome.unknown : Outcome.error;
 
-Color toneColor(Tone t) => switch (t) {
-      Tone.info => const Color(0xFF1565C0),
-      Tone.ok => const Color(0xFF2E7D32),
-      Tone.warn => const Color(0xFFEF6C00),
-      Tone.error => const Color(0xFFC62828),
-      Tone.unknown => const Color(0xFF6A1B9A),
-    };
-
-IconData toneIcon(Tone t) => switch (t) {
-      Tone.info => Icons.qr_code_scanner,
-      Tone.ok => Icons.check_circle,
-      Tone.warn => Icons.warning_amber_rounded,
-      Tone.error => Icons.cancel,
-      Tone.unknown => Icons.help,
-    };
-
-/// The big colored result card at the top of every scan screen.
-class StatusCard extends StatelessWidget {
-  const StatusCard({super.key, required this.tone, required this.title, this.subtitle, this.trailing});
-
-  final Tone tone;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = toneColor(tone);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.10),
-        border: Border.all(color: c, width: 2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(toneIcon(tone), color: c, size: 34),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: c)),
-                if (subtitle != null && subtitle!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(subtitle!, style: const TextStyle(fontSize: 15, color: Color(0xFF333333))),
-                ],
-              ],
-            ),
-          ),
-          if (trailing != null) trailing!,
-        ],
-      ),
-    );
-  }
-}
-
-/// A titled block of label/value rows.
-class InfoSection extends StatelessWidget {
-  const InfoSection({super.key, this.title, required this.rows});
-
-  final String? title;
-  final List<(String, String)> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = rows.where((r) => r.$2.trim().isNotEmpty).toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title != null) ...[
-              Text(title!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const Divider(height: 14),
-            ],
-            for (final r in visible)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 92, child: Text(r.$1, style: const TextStyle(color: Color(0xFF777777)))),
-                    Expanded(child: SelectableText(r.$2, style: const TextStyle(fontSize: 15))),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
+/// Network quality indicator for the (white) navbar.
 class NetBadge extends StatelessWidget {
   const NetBadge({super.key});
 
@@ -145,20 +44,16 @@ class NetBadge extends StatelessWidget {
     return AnimatedBuilder(
       animation: net,
       builder: (context, _) {
-        final (color, label) = switch (net.state) {
-          NetState.good => (Colors.greenAccent, tr('net.good')),
-          NetState.slow => (Colors.amberAccent, tr('net.slow')),
-          NetState.offline => (Colors.redAccent, tr('net.offline')),
+        final color = switch (net.state) {
+          NetState.good => El.success,
+          NetState.slow => El.warning,
+          NetState.offline => El.danger,
         };
         return InkWell(
           onTap: net.probe,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.circle, size: 11, color: color),
-              const SizedBox(width: 4),
-              Text(label, style: const TextStyle(fontSize: 12, color: Colors.white)),
-            ]),
+            child: Icon(net.state == NetState.offline ? Icons.wifi_off : Icons.wifi, size: 20, color: color),
           ),
         );
       },
@@ -175,118 +70,127 @@ class OfflineBanner extends StatelessWidget {
     return AnimatedBuilder(
       animation: net,
       builder: (context, _) {
-        if (net.state != NetState.offline) return const SizedBox.shrink();
+        if (net.state == NetState.good) return const SizedBox.shrink();
+        final offline = net.state == NetState.offline;
         return Container(
           width: double.infinity,
-          color: const Color(0xFFC62828),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(tr('net.offlineBanner'), style: const TextStyle(color: Colors.white, fontSize: 13)),
+          color: offline ? El.danger : El.warning,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(tr(offline ? 'pda.net.offline' : 'pda.net.slow'),
+              style: const TextStyle(color: Colors.white, fontSize: 12.5)),
         );
       },
     );
   }
 }
 
-/// Prompt line telling the operator what to scan next, with a manual-entry button.
-class ScanPrompt extends StatelessWidget {
-  const ScanPrompt({super.key, required this.text, required this.onManual, this.busy = false});
-
-  final String text;
-  final VoidCallback onManual;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF263238),
-      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-      child: Row(children: [
-        if (busy)
-          const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-        else
-          const Icon(Icons.qr_code_scanner, color: Colors.white, size: 24),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(busy ? tr('common.loading') : text,
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-        ),
-        IconButton(
-          tooltip: tr('common.manualInput'),
-          onPressed: onManual,
-          icon: const Icon(Icons.keyboard, color: Colors.white),
-        ),
-      ]),
-    );
-  }
+PreferredSizeWidget elAppBar(String title, {List<Widget> actions = const []}) {
+  return AppBar(
+    title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+    actions: [...actions, const NetBadge()],
+  );
 }
 
-Future<String?> askCode(BuildContext context, {String? title, String initial = ''}) {
+Future<String?> askCode(BuildContext context, {String? title, String initial = '', TextInputType? keyboard}) {
   final ctrl = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title ?? tr('common.inputCode')),
+      title: Text(title ?? tr('pda.inputCode'), style: const TextStyle(fontSize: 16)),
       content: TextField(
         controller: ctrl,
         autofocus: true,
+        keyboardType: keyboard,
         textInputAction: TextInputAction.done,
         onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        decoration: const InputDecoration(border: OutlineInputBorder()),
+        decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancel'))),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: Text(tr('common.ok'))),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('common.cancelButtonText'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: Text(tr('common.confirmButtonText'))),
       ],
     ),
   );
 }
 
-Future<bool> confirm(BuildContext context, String message, {String? okText}) async {
+Future<bool> confirm(BuildContext context, String message, {String? title, String? okText, bool danger = false}) async {
   final r = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      content: Text(message, style: const TextStyle(fontSize: 16)),
+      title: title == null ? null : Text(title, style: const TextStyle(fontSize: 16)),
+      content: Text(message, style: const TextStyle(fontSize: 15)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('common.cancel'))),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(okText ?? tr('common.confirm'))),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('common.cancelButtonText'))),
+        FilledButton(
+          style: danger ? elButton(ElType.danger) : null,
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(okText ?? tr('common.confirmButtonText')),
+        ),
       ],
     ),
   );
   return r ?? false;
 }
 
-void toast(BuildContext context, String msg, {Tone tone = Tone.info}) {
+/// el-message-box alert (single OK button).
+Future<void> alertBox(BuildContext context, String title, String message, {ElType type = ElType.warning}) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      icon: Icon(type == ElType.danger ? Icons.cancel : Icons.warning_rounded, color: elColor(type), size: 36),
+      title: Text(title, style: const TextStyle(fontSize: 16)),
+      content: Text(message, style: const TextStyle(fontSize: 15)),
+      actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+    ),
+  );
+}
+
+/// el-message
+void toast(BuildContext context, String msg, {ElType type = ElType.info}) {
   final m = ScaffoldMessenger.maybeOf(context);
   m?.hideCurrentSnackBar();
   m?.showSnackBar(SnackBar(
-    content: Text(msg, style: const TextStyle(fontSize: 15)),
-    backgroundColor: tone == Tone.info ? null : toneColor(tone),
-    duration: Duration(seconds: tone == Tone.error ? 6 : 3),
+    content: Text(msg, style: const TextStyle(fontSize: 14)),
+    backgroundColor: type == ElType.info ? const Color(0xFF606266) : elColor(type),
+    duration: Duration(seconds: type == ElType.danger ? 6 : 3),
+    behavior: SnackBarBehavior.floating,
   ));
 }
 
-/// Common behavior of every scanning screen:
+/// Common behaviour of every scanning screen (web: components/Widget/ScannerInput):
 ///  - receives scans only while it is the visible route
-///  - one scan at a time (a second scan while busy is rejected with a beep)
+///  - one scan at a time (a scan while busy is rejected with a warning beep)
+///  - optional "scan twice to confirm" (requiredScans = 2), with the web's
+///    "Scanning Progress" / "Just scanned" / "Scanning is not consistent" texts
 ///  - manual entry
 mixin ScanPageMixin<T extends StatefulWidget> on State<T> {
   Object? _scanToken;
   AppState? _app;
   bool busy = false;
 
-  /// Module id used in the scan history.
+  final List<String> _confirmBuffer = [];
+  String? lastScanned;
+  String? scanError;
+
+  /// Module name (i18n key) used in the scan history.
   String get moduleName;
 
-  /// Handle one scanned code. Exceptions are not caught here.
+  /// How many identical scans are needed before [onScan] is called.
+  int get requiredScans => 1;
+
   Future<void> onScan(String code);
 
   AppState get app => _app ??= AppScope.of(context);
+
+  String? get scanProgress => _confirmBuffer.isEmpty || requiredScans < 2
+      ? null
+      : '${tr('wms.scanProgress')}: ${_confirmBuffer.length} / $requiredScans';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _app ??= AppScope.of(context);
-    _scanToken ??= app.scanner.register(_handle, isActive: () => mounted && (ModalRoute.of(context)?.isCurrent ?? false));
+    _scanToken ??= app.scanner.register(handleScan, isActive: () => mounted && (ModalRoute.of(context)?.isCurrent ?? false));
   }
 
   @override
@@ -295,13 +199,34 @@ mixin ScanPageMixin<T extends StatefulWidget> on State<T> {
     super.dispose();
   }
 
-  void _handle(String code) async {
+  void resetScanConfirm() => _confirmBuffer.clear();
+
+  void handleScan(String code) async {
     if (busy) {
       app.device.warn();
-      toast(context, tr('common.busyWait'), tone: Tone.warn);
+      toast(context, tr('pda.busyWait'), type: ElType.warning);
       return;
     }
-    setState(() => busy = true);
+    if (requiredScans > 1) {
+      _confirmBuffer.add(code);
+      if (_confirmBuffer.length < requiredScans) {
+        app.device.ok();
+        setState(() => scanError = null);
+        return;
+      }
+      final same = _confirmBuffer.every((c) => c == _confirmBuffer.first);
+      _confirmBuffer.clear();
+      if (!same) {
+        app.device.feedback(Beep.double);
+        setState(() => scanError = tr('wms.reScan'));
+        return;
+      }
+    }
+    setState(() {
+      busy = true;
+      scanError = null;
+      lastScanned = requiredScans > 1 ? '${tr('wms.lastScanned')}: $code' : null;
+    });
     try {
       await onScan(code);
     } finally {
@@ -311,63 +236,122 @@ mixin ScanPageMixin<T extends StatefulWidget> on State<T> {
 
   Future<void> manualEntry() async {
     final code = await askCode(context);
-    if (code != null && code.isNotEmpty) _handle(code);
+    if (code == null || code.isEmpty) return;
+    // a typed code does not need the double-scan confirmation
+    _confirmBuffer
+      ..clear()
+      ..addAll(List.filled(requiredScans - 1, code));
+    handleScan(code);
   }
 
   void log(String code, Outcome o, [String msg = '']) => app.history.add(moduleName, code, o, msg);
 }
 
-/// Standard scaffold for scan screens.
-class ScanScaffold extends StatelessWidget {
+/// Standard scaffold for scan screens: navbar, offline banner, scanner bar, content.
+/// The content jumps back to the top after every scan so the new result is visible.
+class ScanScaffold extends StatefulWidget {
   const ScanScaffold({
     super.key,
     required this.title,
-    required this.prompt,
+    required this.placeholder,
     required this.onManual,
     required this.busy,
     required this.children,
     this.actions = const [],
     this.bottom,
+    this.progress,
+    this.lastScanned,
+    this.scanError,
+    this.disabled = false,
+    this.header,
+    this.onRefresh,
   });
 
   final String title;
-  final String prompt;
+  final String placeholder;
   final VoidCallback onManual;
   final bool busy;
+  final bool disabled;
   final List<Widget> children;
   final List<Widget> actions;
   final Widget? bottom;
+  final Widget? header;
+  final String? progress;
+  final String? lastScanned;
+  final String? scanError;
+  final Future<void> Function()? onRefresh;
+
+  @override
+  State<ScanScaffold> createState() => _ScanScaffoldState();
+}
+
+class _ScanScaffoldState extends State<ScanScaffold> {
+  final _scroll = ScrollController();
+
+  @override
+  void didUpdateWidget(ScanScaffold old) {
+    super.didUpdateWidget(old);
+    if (old.busy && !widget.busy && _scroll.hasClients && _scroll.offset > 0) {
+      _scroll.jumpTo(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final w = widget;
+    final list = ListView(
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 16),
+      children: w.children,
+    );
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: [...actions, const NetBadge()]),
+      appBar: elAppBar(w.title, actions: w.actions),
       body: Column(children: [
         const OfflineBanner(),
-        ScanPrompt(text: prompt, onManual: onManual, busy: busy),
-        Expanded(child: ListView(padding: const EdgeInsets.only(bottom: 24), children: children)),
-        if (bottom != null) bottom!,
+        if (w.header != null) w.header!,
+        ScannerBar(
+          placeholder: w.placeholder,
+          onManual: w.onManual,
+          busy: w.busy,
+          disabled: w.disabled,
+          progress: w.progress,
+          lastScanned: w.lastScanned,
+          error: w.scanError,
+        ),
+        Expanded(child: w.onRefresh == null ? list : RefreshIndicator(onRefresh: w.onRefresh!, child: list)),
+        if (w.bottom != null) w.bottom!,
       ]),
     );
   }
 }
 
-/// Parses a JSON-ish value that may already be decoded or still a JSON string.
+/// Parses a JSON value that may already be decoded or still be a JSON string.
 List<Map<String, dynamic>> jsonList(dynamic v) {
-  dynamic d = v;
-  if (d is String) {
-    final s = d.trim();
-    if (s.length < 2) return const [];
-    try {
-      d = jsonDecode(s);
-    } catch (_) {
-      return const [];
-    }
-  }
+  final d = jsonAny(v);
   if (d is List) {
     return d.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
   }
-  return const [];
+  return [];
+}
+
+dynamic jsonAny(dynamic v) {
+  if (v is String) {
+    final s = v.trim();
+    if (s.isEmpty) return null;
+    try {
+      return jsonDecode(s);
+    } catch (_) {
+      return null;
+    }
+  }
+  return v;
 }
 
 int asInt(dynamic v) {

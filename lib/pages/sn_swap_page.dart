@@ -3,16 +3,16 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-import '../core/api.dart';
-import '../core/device.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 
-/// SN swap (web: views/warehouse/snScan.vue, API /v0/p11yorders/swapSN).
-/// Every code must be scanned twice (confirmation). After the original SNs are
-/// scanned the server returns a new SN, whose label is printed at the desktop
-/// print station through the socket.io relay.
+enum _R { idle, order, got, printed, notFound, error }
+
+/// SN Scan (web: views/warehouse/snScan.vue, API /v0/p11yorders/swapSN).
+/// Every code is scanned twice (confirmation). After the two original SNs the server
+/// returns a new SN, printed at the print station through the socket.io relay.
 class SnSwapPage extends StatefulWidget {
   const SnSwapPage({super.key});
 
@@ -22,14 +22,16 @@ class SnSwapPage extends StatefulWidget {
 
 class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
   @override
-  String get moduleName => 'mod.snswap';
+  String get moduleName => 'wms.snScan';
+
+  @override
+  int get requiredScans => 2;
 
   Map<String, dynamic> _order = {};
-  String _pendingConfirm = '';
   int _step = 0; // 0 order, 1 SN1, 2 SN2
-  Tone _tone = Tone.info;
-  String _title = '';
-  String _sub = '';
+  _R _r = _R.idle;
+  String _code = '';
+  String _msg = '';
   List<Map<String, dynamic>> _history = [];
   List<String>? _printTypes;
   StreamSubscription<String>? _wsSub;
@@ -41,7 +43,7 @@ class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _wsSub = app.ws.messages.listen((m) {
-        if (mounted) toast(context, m, tone: m.toLowerCase().contains('not') ? Tone.error : Tone.ok);
+        if (mounted) toast(context, m, type: m.toLowerCase().contains('not') ? ElType.danger : ElType.success);
       });
     });
   }
@@ -52,44 +54,20 @@ class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
     super.dispose();
   }
 
-  String get _prompt => switch (_step) {
-        0 => tr('sn.scanOrder'),
-        1 => tr('sn.scanSN1'),
-        _ => tr('sn.scanSN2'),
+  String get _placeholder => switch (_step) {
+        0 => 'Order No.',
+        1 => 'Scan the original SN1',
+        _ => 'Scan the original SN2',
       };
 
   @override
   Future<void> onScan(String code) async {
-    if (_pendingConfirm.isEmpty) {
-      app.device.ok();
-      setState(() {
-        _pendingConfirm = code;
-        _tone = Tone.info;
-        _title = tr('rcv.scanAgain', {'code': code});
-        _sub = '';
-      });
-      return;
-    }
-    if (_pendingConfirm != code) {
-      app.device.feedback(Beep.double);
-      setState(() {
-        _pendingConfirm = '';
-        _tone = Tone.error;
-        _title = tr('rcv.mismatch');
-        _sub = code;
-      });
-      return;
-    }
-    _pendingConfirm = '';
-    await _submit(code);
-  }
-
-  Future<void> _submit(String code) async {
+    _code = code;
     try {
       final data = await app.api.command('GET', '/v0/p11yorders/swapSN', params: {'id': _id, 'q': code});
       if (data is! Map || asInt(data['id']) == 0) {
         app.device.error();
-        _show(Tone.error, tr('common.notFound', {'code': code}));
+        setState(() => _r = _R.notFound);
         log(code, Outcome.error, 'not found');
         return;
       }
@@ -98,7 +76,7 @@ class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
       if (_step == 0) {
         _step = 1;
         app.device.ok();
-        _show(Tone.ok, '${tr('common.orderNo')} ${asStr(_order['unid'])}', tr('sn.scanSN1'));
+        setState(() => _r = _R.order);
         log(code, Outcome.ok, asStr(_order['unid']));
         return;
       }
@@ -110,12 +88,15 @@ class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
       } else {
         _step = 2;
         app.device.ok();
-        _show(Tone.ok, tr('rcv.gotItem', {'code': code}), tr('sn.scanSN2'));
+        setState(() => _r = _R.got);
         log(code, Outcome.ok);
       }
     } catch (e) {
       app.device.error();
-      _show(e is ApiException && e.kind == FailKind.unknown ? Tone.unknown : Tone.error, errorText(e), code);
+      setState(() {
+        _r = _R.error;
+        _msg = errorText(e);
+      });
       log(code, outcomeOf(e), errorText(e));
     }
   }
@@ -138,72 +119,69 @@ class _SnSwapPageState extends State<SnSwapPage> with ScanPageMixin {
         await app.ws.printLabel(t, sn);
       }
       app.device.ok();
-      _show(Tone.ok, tr('sn.printed', {'sn': sn}));
+      setState(() {
+        _r = _R.printed;
+        _msg = sn;
+      });
     } catch (e) {
       app.device.error();
-      _show(Tone.error, tr('sn.printFailed', {'msg': errorText(e)}), sn);
+      setState(() {
+        _r = _R.error;
+        _msg = '${tr('pda.print.failed', {'msg': '$e'})} ($sn)';
+      });
     }
   }
 
-  void _show(Tone t, String title, [String sub = '']) => setState(() {
-        _tone = t;
-        _title = title;
-        _sub = sub;
-      });
-
-  void _reset() => setState(() {
+  void _change() => setState(() {
         _order = {};
         _history = [];
         _step = 0;
-        _pendingConfirm = '';
-        _title = '';
-        _sub = '';
+        _r = _R.idle;
+        resetScanConfirm();
       });
 
   @override
   Widget build(BuildContext context) {
+    final change = FilledButton(style: elButton(ElType.primary), onPressed: _change, child: const Text('Change Order'));
     return ScanScaffold(
-      title: tr('mod.snswap'),
-      prompt: _prompt,
+      title: tr('wms.snScan'),
+      placeholder: _placeholder,
       busy: busy,
       onManual: manualEntry,
-      actions: [
-        if (_id != 0) IconButton(onPressed: busy ? null : _reset, icon: const Icon(Icons.swap_horiz), tooltip: tr('sn.changeOrder')),
-      ],
+      progress: scanProgress != null ? '$scanProgress — Please scann again to confirm!' : null,
+      lastScanned: lastScanned,
+      scanError: scanError,
       children: [
-        StatusCard(
-          tone: _title.isEmpty ? Tone.info : _tone,
-          title: _title.isEmpty ? tr('common.waitScan') : _title,
-          subtitle: _title.isEmpty ? _prompt : _sub,
-        ),
-        if (_order.isNotEmpty) ...[
-          InfoSection(rows: [
-            (tr('common.orderNo'), asStr(_order['unid'])),
-            (tr('ship.bundles'), (_order['shipBundleSent'] as List? ?? const []).join(', ')),
-          ]),
-          if (_history.isNotEmpty)
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                  child: Text(tr('sn.history'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                for (final h in _history)
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.print),
-                    title: Text(asStr(h['sn'])),
-                    subtitle: Text(asStr(h['sku'])),
-                    onTap: () async {
-                      final sn = asStr(h['sn']);
-                      if (sn.isEmpty) return;
-                      if (await confirm(context, tr('sn.reprint', {'sn': sn}))) _print(sn);
-                    },
-                  ),
-              ]),
+        switch (_r) {
+          _R.idle => const ElResult(type: ElType.info, title: 'Please Scan the Order No.'),
+          _R.order => ElResult(type: ElType.success, title: 'Order ${asStr(_order['unid'])}', subTitle: 'Please confirm the order info and continue!', extra: change),
+          _R.got => ElResult(type: ElType.success, title: 'Got $_code !', subTitle: 'Scan the original SN2', extra: change),
+          _R.printed => ElResult(type: ElType.success, title: _msg, subTitle: 'Please check out the printer.', extra: change),
+          _R.notFound => const ElResult(type: ElType.warning, title: 'Please scan the next different SN!', subTitle: 'Scan 2 different SNs to return the new SN print.'),
+          _R.error => ElResult(type: ElType.danger, title: _msg, subTitle: _code),
+        },
+        if (_order.isNotEmpty)
+          ElDescriptions(title: 'Order Info', items: [
+            ('Already Scanned', (_order['shipBundleSent'] as List? ?? const []).join('\n')),
+            (
+              'Print History',
+              _history.isEmpty
+                  ? null
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final h in _history)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                          onPressed: asStr(h['sn']).isEmpty
+                              ? null
+                              : () async {
+                                  if (await confirm(context, '${tr('common.print')} ${asStr(h['sn'])}?')) _print(asStr(h['sn']));
+                                },
+                          icon: const Icon(Icons.print, size: 16),
+                          label: Text('${asStr(h['sku'])}:${asStr(h['sn'])}'),
+                        ),
+                    ])
             ),
-        ],
+          ]),
       ],
     );
   }

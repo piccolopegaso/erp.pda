@@ -4,6 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileOutputStream
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
@@ -34,6 +42,9 @@ class MainActivity : FlutterActivity() {
     private var scanExtraKeys: List<String> = emptyList()
     private var toneGenerator: ToneGenerator? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val photoRequestCode = 4711
+    private var photoResult: MethodChannel.Result? = null
+    private var photoFile: File? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -65,6 +76,7 @@ class MainActivity : FlutterActivity() {
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     result.success(null)
                 }
+                "takePhoto" -> takePhoto(result)
                 "deviceInfo" -> {
                     result.success(
                         mapOf(
@@ -199,6 +211,72 @@ class MainActivity : FlutterActivity() {
             }
             else -> tg.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
         }
+    }
+
+    /** System camera -> JPEG in cache, downscaled to <= 1600 px (weak Wi-Fi friendly). Returns the path or null. */
+    private fun takePhoto(result: MethodChannel.Result) {
+        if (photoResult != null) {
+            result.error("busy", "camera already open", null)
+            return
+        }
+        try {
+            val dir = File(cacheDir, "photos").apply { mkdirs() }
+            dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 24 * 3600 * 1000 }?.forEach { it.delete() }
+            val file = File(dir, "rma_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (intent.resolveActivity(packageManager) == null) {
+                result.error("no_camera", "no camera app", null)
+                return
+            }
+            photoFile = file
+            photoResult = result
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, photoRequestCode)
+        } catch (e: Exception) {
+            photoResult = null
+            result.error("camera", e.message, null)
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != photoRequestCode) return
+        val result = photoResult ?: return
+        photoResult = null
+        val file = photoFile
+        if (resultCode != RESULT_OK || file == null || !file.exists() || file.length() == 0L) {
+            result.success(null)
+            return
+        }
+        Thread {
+            val path = try { shrinkJpeg(file) } catch (_: Exception) { file.absolutePath }
+            mainHandler.post { result.success(path) }
+        }.start()
+    }
+
+    private fun shrinkJpeg(file: File): String {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 1600 || bounds.outHeight / (sample * 2) >= 1600) sample *= 2
+        val bmp = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return file.absolutePath
+        val rotation = when (ExifInterface(file.absolutePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        val out = if (rotation != 0f) {
+            Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation) }, true)
+        } else bmp
+        FileOutputStream(file).use { out.compress(Bitmap.CompressFormat.JPEG, 80, it) }
+        return file.absolutePath
     }
 
     @Suppress("DEPRECATION")

@@ -1,319 +1,228 @@
-/// Lightweight translations (zh / en / de) – no code generation needed.
-/// Use `tr('key')` or `tr('key', {'n': 3})` for `{n}` placeholders.
+/// Translations (en / zh / de). English is the default, like the web app.
+///
+/// Lookup order for `tr(key)`:
+///   1. `pda.*` keys below (texts that only exist on the PDA)
+///   2. web keys (`wms.*`, `common.*` ...) copied from erp.webapp/src/locale by
+///      tool/sync_web_locale.py into web_locale.g.dart -> identical wording to the web.
+/// `{name}` placeholders are filled from [args].
 library;
 
-String _lang = 'zh';
+import 'web_locale.g.dart';
 
-const supportedLanguages = {'zh': '中文', 'en': 'English', 'de': 'Deutsch'};
+String _lang = 'en';
+
+const supportedLanguages = {'en': 'English', 'zh': '中文', 'de': 'Deutsch'};
 
 void setLanguage(String lang) {
-  _lang = supportedLanguages.containsKey(lang) ? lang : 'zh';
+  _lang = supportedLanguages.containsKey(lang) ? lang : 'en';
 }
 
 String get currentLanguage => _lang;
 
 String tr(String key, [Map<String, Object?> args = const {}]) {
-  final row = _t[key];
+  final row = _pda[key] ?? webLocale[key];
   var s = row == null ? key : (row[_lang] ?? row['en'] ?? key);
   args.forEach((k, v) => s = s.replaceAll('{$k}', '${v ?? ''}'));
   return s;
 }
 
 /// Exposed for the translation-completeness test.
-Map<String, Map<String, String>> get translationTable => _t;
+Map<String, Map<String, String>> get translationTable => {...webLocale, ..._pda};
 
-const Map<String, Map<String, String>> _t = {
-  // ---------- common ----------
-  'app.title': {'zh': 'MIC 仓库 PDA', 'en': 'MIC Warehouse PDA', 'de': 'MIC Lager-PDA'},
-  'common.ok': {'zh': '确定', 'en': 'OK', 'de': 'OK'},
-  'common.cancel': {'zh': '取消', 'en': 'Cancel', 'de': 'Abbrechen'},
-  'common.confirm': {'zh': '确认', 'en': 'Confirm', 'de': 'Bestätigen'},
-  'common.retry': {'zh': '重试', 'en': 'Retry', 'de': 'Erneut'},
-  'common.save': {'zh': '保存', 'en': 'Save', 'de': 'Speichern'},
-  'common.close': {'zh': '关闭', 'en': 'Close', 'de': 'Schließen'},
-  'common.clear': {'zh': '清空', 'en': 'Clear', 'de': 'Leeren'},
-  'common.loading': {'zh': '处理中…', 'en': 'Working…', 'de': 'Bitte warten…'},
-  'common.manualInput': {'zh': '手动输入', 'en': 'Type code', 'de': 'Code eingeben'},
-  'common.inputCode': {'zh': '输入条码', 'en': 'Enter barcode', 'de': 'Barcode eingeben'},
-  'common.next': {'zh': '下一个', 'en': 'Next', 'de': 'Nächstes'},
-  'common.restart': {'zh': '重新开始', 'en': 'Start over', 'de': 'Neu beginnen'},
-  'common.busyWait': {'zh': '上一条还在处理，请稍候再扫', 'en': 'Still processing the previous scan', 'de': 'Vorheriger Scan läuft noch'},
-  'common.customer': {'zh': '客户', 'en': 'Customer', 'de': 'Kunde'},
-  'common.items': {'zh': '商品', 'en': 'Items', 'de': 'Artikel'},
-  'common.qty': {'zh': '数量', 'en': 'Qty', 'de': 'Menge'},
-  'common.location': {'zh': '库位', 'en': 'Location', 'de': 'Lagerplatz'},
-  'common.batch': {'zh': '批次', 'en': 'Batch', 'de': 'Charge'},
-  'common.warehouse': {'zh': '仓库', 'en': 'Warehouse', 'de': 'Lager'},
-  'common.status': {'zh': '状态', 'en': 'Status', 'de': 'Status'},
-  'common.note': {'zh': '备注', 'en': 'Remark', 'de': 'Bemerkung'},
-  'common.noteInner': {'zh': '内部备注', 'en': 'Internal remark', 'de': 'Interne Bemerkung'},
-  'common.orderNo': {'zh': '单号', 'en': 'Order no.', 'de': 'Auftragsnr.'},
-  'common.refNo': {'zh': '参考号', 'en': 'Ref. no.', 'de': 'Referenz'},
-  'common.trackingNo': {'zh': '跟踪号', 'en': 'Tracking no.', 'de': 'Sendungsnr.'},
-  'common.carrier': {'zh': '承运商', 'en': 'Carrier', 'de': 'Versender'},
-  'common.consignee': {'zh': '收件人', 'en': 'Consignee', 'de': 'Empfänger'},
-  'common.country': {'zh': '国家', 'en': 'Country', 'de': 'Land'},
-  'common.scannedAt': {'zh': '扫描时间', 'en': 'Scanned at', 'de': 'Gescannt'},
-  'common.notFound': {'zh': '未找到: {code}', 'en': 'Not found: {code}', 'de': 'Nicht gefunden: {code}'},
-  'common.empty': {'zh': '暂无数据', 'en': 'No data', 'de': 'Keine Daten'},
-  'common.lastScan': {'zh': '最近扫描', 'en': 'Last scan', 'de': 'Letzter Scan'},
-  'common.waitScan': {'zh': '请扫描', 'en': 'Please scan', 'de': 'Bitte scannen'},
-  'common.total': {'zh': '共 {n} 条', 'en': '{n} rows', 'de': '{n} Zeilen'},
+const Map<String, Map<String, String>> _pda = {
+  // ---------- general ----------
+  'pda.all': {'en': 'All', 'zh': '全部', 'de': 'Alle'},
+  'pda.total': {'en': 'Total {n}', 'zh': '共 {n} 条', 'de': 'Gesamt {n}'},
+  'pda.loadMore': {'en': 'Load more', 'zh': '加载更多', 'de': 'Mehr laden'},
+  'pda.noData': {'en': 'No data', 'zh': '暂无数据', 'de': 'Keine Daten'},
+  'pda.notFound': {'en': '{code} not found', 'zh': '未找到 {code}', 'de': '{code} nicht gefunden'},
+  'pda.inputCode': {'en': 'Enter barcode', 'zh': '输入条码', 'de': 'Barcode eingeben'},
+  'pda.busyWait': {'en': 'Still processing the previous scan', 'zh': '上一条还在处理，请稍候再扫', 'de': 'Vorheriger Scan läuft noch'},
+  'pda.save': {'en': 'Save', 'zh': '保存', 'de': 'Speichern'},
+  'pda.saved': {'en': 'Saved', 'zh': '已保存', 'de': 'Gespeichert'},
+  'pda.delete': {'en': 'Delete', 'zh': '删除', 'de': 'Löschen'},
+  'pda.history': {'en': 'Scan History', 'zh': '扫描记录', 'de': 'Scan-Verlauf'},
+  'pda.logoutConfirm': {'en': 'Log out now?', 'zh': '确定退出登录？', 'de': 'Jetzt abmelden?'},
+  'pda.pickScanBatch': {'en': 'Pick Scan Batch', 'zh': 'Pick Scan Batch', 'de': 'Pick Scan Batch'},
+  'pda.packScanOrder': {'en': 'Pack Scan Order', 'zh': 'Pack Scan Order', 'de': 'Pack Scan Order'},
 
   // ---------- errors / network ----------
-  'err.network.notSent': {
+  'pda.err.notSent': {
+    'en': 'No network - the request was not sent. Move to better Wi-Fi and scan again.',
     'zh': '网络不通，请求未发出。请移动到信号好的位置后重扫。',
-    'en': 'No network – the request was not sent. Move to better Wi-Fi and scan again.',
-    'de': 'Kein Netz – Anfrage nicht gesendet. Bessere WLAN-Position suchen und erneut scannen.'
+    'de': 'Kein Netz - Anfrage nicht gesendet. Bessere WLAN-Position suchen und erneut scannen.'
   },
-  'err.network.unknown': {
-    'zh': '网络超时：服务器可能已处理也可能没有。请先核对结果，不要直接重复扫描！',
+  'pda.err.unknown': {
     'en': 'Timeout: the server may or may not have processed it. Check the result before scanning again!',
+    'zh': '网络超时：服务器可能已处理也可能没有。请先核对结果，不要直接重复扫描！',
     'de': 'Zeitüberschreitung: evtl. bereits verarbeitet. Ergebnis prüfen, nicht einfach erneut scannen!'
   },
-  'err.auth': {'zh': '登录已过期，请重新登录', 'en': 'Session expired, please log in again', 'de': 'Sitzung abgelaufen, bitte neu anmelden'},
-  'err.server': {'zh': '服务器错误 {code}', 'en': 'Server error {code}', 'de': 'Serverfehler {code}'},
-  'err.http400': {
-    'zh': '服务器拒绝请求 (400)。请在设置中检查 Origin 是否正确。',
-    'en': 'Request rejected (400). Check the Origin in settings.',
+  'pda.err.verified': {
+    'en': 'The progress above was re-read from the server.',
+    'zh': '上面的进度已从服务器重新读取。',
+    'de': 'Der Fortschritt oben wurde neu vom Server gelesen.'
+  },
+  'pda.err.auth': {'en': 'Your session has expired, please login again.', 'zh': '登录已过期，请重新登录', 'de': 'Sitzung abgelaufen, bitte neu anmelden'},
+  'pda.err.server': {'en': 'Server error {code}', 'zh': '服务器错误 {code}', 'de': 'Serverfehler {code}'},
+  'pda.err.http400': {
+    'en': 'Request rejected (400). Check the Origin in Settings.',
+    'zh': '服务器拒绝请求 (400)。请在设置中检查 Origin。',
     'de': 'Anfrage abgelehnt (400). Origin in den Einstellungen prüfen.'
   },
-  'err.unknownCheck': {'zh': '结果未知，已自动刷新以核对', 'en': 'Result unknown – refreshed to verify', 'de': 'Ergebnis unklar – zur Prüfung aktualisiert'},
-  'net.good': {'zh': '网络良好', 'en': 'Online', 'de': 'Online'},
-  'net.slow': {'zh': '网络较慢', 'en': 'Slow', 'de': 'Langsam'},
-  'net.offline': {'zh': '网络断开', 'en': 'Offline', 'de': 'Offline'},
-  'net.offlineBanner': {
-    'zh': '当前无网络。扫描结果不会提交，请移动到信号好的区域。',
-    'en': 'No network. Scans cannot be submitted – move to an area with Wi-Fi.',
-    'de': 'Kein Netz. Scans werden nicht übertragen – in WLAN-Bereich wechseln.'
+  'pda.net.good': {'en': 'Online', 'zh': '网络良好', 'de': 'Online'},
+  'pda.net.slowShort': {'en': 'Slow network', 'zh': '网络较慢', 'de': 'Langsames Netz'},
+  'pda.net.offlineShort': {'en': 'Offline', 'zh': '网络断开', 'de': 'Offline'},
+  'pda.net.offline': {
+    'en': 'No network. Scans cannot be submitted - move to an area with Wi-Fi.',
+    'zh': '当前无网络，扫描无法提交，请移动到有信号的区域。',
+    'de': 'Kein Netz. Scans werden nicht übertragen - in WLAN-Bereich wechseln.'
+  },
+  'pda.net.slow': {
+    'en': 'Slow network - wait for each result before the next scan.',
+    'zh': '网络较慢，请等结果出来再扫下一个。',
+    'de': 'Langsames Netz - auf jedes Ergebnis warten.'
   },
 
   // ---------- login ----------
-  'login.title': {'zh': '登录', 'en': 'Sign in', 'de': 'Anmelden'},
-  'login.account': {'zh': '账号 (邮箱)', 'en': 'Account (e-mail)', 'de': 'Konto (E-Mail)'},
-  'login.password': {'zh': '密码', 'en': 'Password', 'de': 'Passwort'},
-  'login.captcha': {'zh': '验证码', 'en': 'Captcha', 'de': 'Captcha'},
-  'login.captchaTap': {'zh': '点击图片刷新', 'en': 'Tap image to refresh', 'de': 'Bild antippen zum Aktualisieren'},
-  'login.submit': {'zh': '登录', 'en': 'Sign in', 'de': 'Anmelden'},
-  'login.server': {'zh': '服务器', 'en': 'Server', 'de': 'Server'},
-  'login.failed': {'zh': '登录失败：{msg}', 'en': 'Login failed: {msg}', 'de': 'Anmeldung fehlgeschlagen: {msg}'},
-  'login.required': {'zh': '请填写账号、密码和验证码', 'en': 'Please fill in account, password and captcha', 'de': 'Bitte Konto, Passwort und Captcha ausfüllen'},
-  'login.relogin': {'zh': '重新登录', 'en': 'Sign in again', 'de': 'Erneut anmelden'},
-  'login.reloginHint': {
-    'zh': '会话已过期。重新登录后可继续当前操作（当前页面数据会保留）。',
-    'en': 'Your session expired. Sign in to continue – the current screen is kept.',
-    'de': 'Sitzung abgelaufen. Nach der Anmeldung geht es auf dieser Seite weiter.'
+  'pda.login.account': {'en': 'Account (e-mail)', 'zh': '账号（邮箱）', 'de': 'Konto (E-Mail)'},
+  'pda.login.captchaTap': {'en': 'Tap to refresh', 'zh': '点击刷新', 'de': 'Antippen'},
+  'pda.login.required': {'en': 'Please fill in account, password and captcha', 'zh': '请填写账号、密码和验证码', 'de': 'Bitte Konto, Passwort und Captcha ausfüllen'},
+  'pda.login.failed': {'en': 'Login failed: {msg}', 'zh': '登录失败：{msg}', 'de': 'Anmeldung fehlgeschlagen: {msg}'},
+  'pda.login.relogin': {'en': 'Session expired!', 'zh': '登录已过期', 'de': 'Sitzung abgelaufen!'},
+  'pda.login.reloginHint': {
+    'en': 'Sign in again to continue - the current screen is kept.',
+    'zh': '重新登录后可继续当前操作（当前页面数据会保留）。',
+    'de': 'Erneut anmelden, um fortzufahren - die Seite bleibt erhalten.'
   },
-  'login.renewed': {
+  'pda.login.toLoginPage': {'en': 'Back to login', 'zh': '返回登录页', 'de': 'Zur Anmeldung'},
+  'pda.login.renewed': {
+    'en': 'Signed in again. The last scan was not submitted - please scan it again.',
     'zh': '已重新登录。上一条扫描没有提交，请重新扫描。',
-    'en': 'Signed in again. The last scan was not submitted – please scan it again.',
-    'de': 'Wieder angemeldet. Der letzte Scan wurde nicht übertragen – bitte erneut scannen.'
+    'de': 'Wieder angemeldet. Der letzte Scan wurde nicht übertragen - bitte erneut scannen.'
   },
-  'login.toLoginPage': {'zh': '返回登录页', 'en': 'Back to login', 'de': 'Zur Anmeldung'},
 
-  // ---------- home ----------
-  'home.hello': {'zh': '你好，{name}', 'en': 'Hello, {name}', 'de': 'Hallo, {name}'},
-  'home.logout': {'zh': '退出登录', 'en': 'Log out', 'de': 'Abmelden'},
-  'home.logoutConfirm': {'zh': '确定退出登录？', 'en': 'Log out now?', 'de': 'Jetzt abmelden?'},
-  'home.sectionOutbound': {'zh': '出库', 'en': 'Outbound', 'de': 'Ausgang'},
-  'home.sectionInbound': {'zh': '入库 / 退货', 'en': 'Inbound / Returns', 'de': 'Eingang / Retouren'},
-  'home.sectionStock': {'zh': '库存', 'en': 'Stock', 'de': 'Bestand'},
-  'home.sectionOther': {'zh': '其他', 'en': 'Other', 'de': 'Sonstiges'},
-
-  // ---------- module names ----------
-  'mod.shipping': {'zh': '出库扫描', 'en': 'Shipping scan', 'de': 'Versandscan'},
-  'mod.shipping.desc': {'zh': '出库复核 / SKU质检 / SN', 'en': 'Outbound QC, SKU check, SN', 'de': 'Ausgangskontrolle, SKU, SN'},
-  'mod.pallet': {'zh': '装车交接', 'en': 'Pallet loading', 'de': 'Verladung'},
-  'mod.pallet.desc': {'zh': '扫托盘/车牌，再扫跟踪号', 'en': 'Scan pallet, then parcels', 'de': 'Palette, dann Sendungen'},
-  'mod.pick': {'zh': '拣货指引', 'en': 'Pick guide', 'de': 'Kommissionierhilfe'},
-  'mod.pick.desc': {'zh': '按库位顺序拣货核对', 'en': 'Pick by location order', 'de': 'Nach Lagerplatz kommissionieren'},
-  'mod.logging': {'zh': '扫描登记', 'en': 'Logging scan', 'de': 'Scan-Protokoll'},
-  'mod.logging.desc': {'zh': '按任务登记箱号/标签', 'en': 'Log labels per task', 'de': 'Etiketten je Auftrag'},
-  'mod.receiving': {'zh': '退货签收', 'en': 'Return receiving', 'de': 'Retourenannahme'},
-  'mod.receiving.desc': {'zh': '扫退货单号，再扫商品', 'en': 'Scan return, then items', 'de': 'Retoure, dann Artikel'},
-  'mod.snswap': {'zh': 'SN 换标', 'en': 'SN swap', 'de': 'SN-Tausch'},
-  'mod.snswap.desc': {'zh': '扫订单与旧SN，远程打印新标', 'en': 'Swap SN, print remotely', 'de': 'SN tauschen, fern drucken'},
-  'mod.stock': {'zh': '库存查询', 'en': 'Stock lookup', 'de': 'Bestandsabfrage'},
-  'mod.stock.desc': {'zh': '扫库位或商品条码', 'en': 'Scan location or item', 'de': 'Lagerplatz oder Artikel'},
-  'mod.history': {'zh': '扫描记录', 'en': 'Scan history', 'de': 'Scan-Verlauf'},
-  'mod.history.desc': {'zh': '本机所有扫描结果', 'en': 'All scans on this device', 'de': 'Alle Scans dieses Geräts'},
-  'mod.settings': {'zh': '设置', 'en': 'Settings', 'de': 'Einstellungen'},
-  'mod.settings.desc': {'zh': '扫描头 / 声音 / 网络', 'en': 'Scanner, sound, network', 'de': 'Scanner, Ton, Netz'},
-
-  // ---------- shipping scan ----------
-  'ship.scanShipment': {'zh': '扫描 跟踪号 / FBA / 订单号', 'en': 'Scan tracking / FBA / order no.', 'de': 'Sendungs-/FBA-/Auftragsnr. scannen'},
-  'ship.scanSKU': {'zh': '请扫描商品 SKU 质检：{item}', 'en': 'Scan SKU for QC: {item}', 'de': 'SKU zur Prüfung scannen: {item}'},
-  'ship.scanSN': {'zh': '请扫描商品序列号：{item}', 'en': 'Scan serial number: {item}', 'de': 'Seriennummer scannen: {item}'},
-  'ship.skuProgress': {'zh': 'SKU 质检 {a}/{b}', 'en': 'SKU QC {a}/{b}', 'de': 'SKU-Prüfung {a}/{b}'},
-  'ship.snProgress': {'zh': 'SN {a}/{b}', 'en': 'SN {a}/{b}', 'de': 'SN {a}/{b}'},
-  'ship.st91': {'zh': '需要扫描 SN', 'en': 'SN required', 'de': 'SN erforderlich'},
-  'ship.st95': {'zh': '{a}/{b} 部分质检', 'en': '{a}/{b} partial QC', 'de': '{a}/{b} Teilprüfung'},
-  'ship.st96': {'zh': '{a}/{b} 待承运商提货', 'en': '{a}/{b} ready for pickup', 'de': '{a}/{b} bereit zur Abholung'},
-  'ship.st99': {'zh': '{a}/{b} 部分发货', 'en': '{a}/{b} partially shipped', 'de': '{a}/{b} teilversendet'},
-  'ship.st100': {'zh': '{a}/{b} 已发货', 'en': '{a}/{b} shipped', 'de': '{a}/{b} versendet'},
-  'ship.stDefault': {'zh': '{a}/{b} 已扫描', 'en': '{a}/{b} scanned', 'de': '{a}/{b} gescannt'},
-  'ship.attention': {'zh': '注意！订单状态异常（可能已取消）', 'en': 'Attention! Check order status (maybe cancelled)', 'de': 'Achtung! Status prüfen (evtl. storniert)'},
-  'ship.already': {'zh': '已扫描过 - {title}', 'en': 'Already scanned - {title}', 'de': 'Bereits gescannt - {title}'},
-  'ship.bundles': {'zh': '已扫包裹', 'en': 'Scanned parcels', 'de': 'Gescannte Pakete'},
-  'ship.missing': {'zh': '未扫', 'en': 'missing', 'de': 'fehlt'},
-  'ship.cancelPrompt': {'zh': '退出质检/SN 扫描', 'en': 'Leave QC / SN scan', 'de': 'Prüfung verlassen'},
-  'ship.skuScanned': {'zh': '已质检 SKU', 'en': 'SKU checked', 'de': 'Geprüfte SKU'},
-  'ship.snScanned': {'zh': '已扫 SN', 'en': 'Scanned SN', 'de': 'Gescannte SN'},
-
-  // ---------- receiving ----------
-  'rcv.scanReturn': {'zh': '扫描退货跟踪号 / 运单号（扫两次确认）', 'en': 'Scan return / shipment no. (scan twice)', 'de': 'Retouren-/Sendungsnr. scannen (2× scannen)'},
-  'rcv.scanAgain': {'zh': '请再扫一次 {code} 确认', 'en': 'Scan {code} again to confirm', 'de': '{code} zur Bestätigung erneut scannen'},
-  'rcv.mismatch': {'zh': '两次扫描不一致，请重新扫描', 'en': 'Scans differ, please scan again', 'de': 'Scans verschieden, bitte erneut'},
-  'rcv.scanItem': {'zh': '请扫描退货商品', 'en': 'Scan returned items', 'de': 'Retourenartikel scannen'},
-  'rcv.gotItem': {'zh': '已登记 {code}', 'en': 'Got {code}', 'de': 'Erfasst: {code}'},
-  'rcv.confirmInfo': {'zh': '请核对订单信息后扫描商品', 'en': 'Check the order and scan items', 'de': 'Auftrag prüfen, Artikel scannen'},
-  'rcv.dispose': {'zh': '处理方式', 'en': 'Disposition', 'de': 'Behandlung'},
-  'rcv.businessType': {'zh': '业务类型', 'en': 'Business type', 'de': 'Geschäftsart'},
-  'rcv.nextPacket': {'zh': '下一个包裹', 'en': 'Next parcel', 'de': 'Nächstes Paket'},
-  'rcv.firstScanned': {'zh': '首次扫描', 'en': 'First scanned', 'de': 'Erstmals gescannt'},
-  'rcv.origItems': {'zh': '原订单商品', 'en': 'Original items', 'de': 'Ursprüngliche Artikel'},
-
-  // ---------- logging ----------
-  'log.scanTask': {'zh': '扫描任务号 / 订单号', 'en': 'Scan task / order no.', 'de': 'Auftragsnr. scannen'},
-  'log.scanToLog': {'zh': '扫描标签进行登记', 'en': 'Scan labels to log', 'de': 'Etiketten zum Erfassen scannen'},
-  'log.task': {'zh': '操作任务 {unid}', 'en': 'Task {unid}', 'de': 'Auftrag {unid}'},
-  'log.inbound': {'zh': '入库单 {unid}', 'en': 'Inbound {unid}', 'de': 'Eingang {unid}'},
-  'log.got': {'zh': '已登记 {code}', 'en': 'Logged {code}', 'de': 'Erfasst {code}'},
-  'log.already': {'zh': '{code} 之前已登记', 'en': '{code} was logged before', 'de': '{code} war bereits erfasst'},
-  'log.changeTask': {'zh': '更换任务', 'en': 'Change task', 'de': 'Auftrag wechseln'},
-
-  // ---------- SN swap ----------
-  'sn.scanOrder': {'zh': '扫描订单号（扫两次确认）', 'en': 'Scan order no. (scan twice)', 'de': 'Auftragsnr. scannen (2×)'},
-  'sn.scanSN1': {'zh': '扫描原 SN（第1个）', 'en': 'Scan original SN #1', 'de': 'Original-SN #1 scannen'},
-  'sn.scanSN2': {'zh': '扫描原 SN（第2个）', 'en': 'Scan original SN #2', 'de': 'Original-SN #2 scannen'},
-  'sn.printed': {'zh': '新 SN {sn} 已发送到打印站', 'en': 'New SN {sn} sent to print station', 'de': 'Neue SN {sn} an Druckstation gesendet'},
-  'sn.printFailed': {'zh': '远程打印失败：{msg}', 'en': 'Remote print failed: {msg}', 'de': 'Ferndruck fehlgeschlagen: {msg}'},
-  'sn.history': {'zh': '打印历史（点击重新打印）', 'en': 'Print history (tap to reprint)', 'de': 'Druckverlauf (antippen = erneut)'},
-  'sn.reprint': {'zh': '重新打印 {sn}？', 'en': 'Reprint {sn}?', 'de': '{sn} erneut drucken?'},
-  'sn.changeOrder': {'zh': '更换订单', 'en': 'Change order', 'de': 'Auftrag wechseln'},
-
-  // ---------- pallet ----------
-  'plt.scanPallet': {'zh': '扫描托盘码 (LD/MP) 或车牌号', 'en': 'Scan pallet code (LD/MP) or plate', 'de': 'Palettencode (LD/MP) oder Kennzeichen scannen'},
-  'plt.scanTracking': {'zh': '扫描跟踪号装车', 'en': 'Scan tracking numbers to load', 'de': 'Sendungsnummern scannen'},
-  'plt.current': {'zh': '当前装车', 'en': 'Loading', 'de': 'Aktuelle Verladung'},
-  'plt.loaded': {'zh': '已装车 {n}', 'en': 'Loaded {n}', 'de': 'Verladen {n}'},
-  'plt.pending': {'zh': '待提交 {n}', 'en': 'Pending {n}', 'de': 'Ausstehend {n}'},
-  'plt.unitBox': {'zh': '箱', 'en': 'Box', 'de': 'Karton'},
-  'plt.unitPallet': {'zh': '托', 'en': 'Pallet', 'de': 'Palette'},
-  'plt.plate': {'zh': '车牌', 'en': 'Plate', 'de': 'Kennzeichen'},
-  'plt.pickupDate': {'zh': '提货日期', 'en': 'Pickup date', 'de': 'Abholdatum'},
-  'plt.notFound': {'zh': '未找到托盘：{code}', 'en': 'Pallet not found: {code}', 'de': 'Palette nicht gefunden: {code}'},
-  'plt.ambiguous': {'zh': '车牌对应多个托盘，已加载 {code}', 'en': 'Plate matches several pallets, loaded {code}', 'de': 'Mehrere Paletten, geladen: {code}'},
-  'plt.dupPending': {'zh': '该跟踪号已在待提交列表', 'en': 'Already pending', 'de': 'Bereits ausstehend'},
-  'plt.dupServer': {'zh': '该跟踪号已装车', 'en': 'Already loaded', 'de': 'Bereits verladen'},
-  'plt.queued': {'zh': '已加入队列 {code}', 'en': 'Queued {code}', 'de': 'Eingereiht {code}'},
-  'plt.saved': {'zh': '已装车 {code}', 'en': 'Loaded {code}', 'de': 'Verladen {code}'},
-  'plt.flushError': {'zh': '提交失败：{msg}', 'en': 'Submit failed: {msg}', 'de': 'Übertragung fehlgeschlagen: {msg}'},
-  'plt.queueStopped': {
-    'zh': '队列已暂停：请处理出错的跟踪号（重试或删除）',
-    'en': 'Queue paused: fix the failed tracking number (retry or remove)',
-    'de': 'Warteschlange pausiert: Fehler beheben (erneut oder entfernen)'
+  // ---------- picklist ----------
+  'pda.pick.todo': {'en': 'To do', 'zh': '待处理', 'de': 'Offen'},
+  'pda.pick.change': {'en': 'Change Picklist', 'zh': 'Change Picklist', 'de': 'Change Picklist'},
+  'pda.pick.next': {'en': 'Next Picklist', 'zh': '扫描下一个 Picklist', 'de': 'Nächste Picklist'},
+  'pda.pick.finished': {'en': 'This Picklist is Finished!', 'zh': 'This Picklist is Finished!', 'de': 'This Picklist is Finished!'},
+  'pda.pick.countAgain': {'en': 'Please count again!', 'zh': 'Please count again!', 'de': 'Please count again!'},
+  'pda.pick.notEnoughLabels': {'en': 'Not enough labels to print!', 'zh': 'Not enough labels to print!', 'de': 'Not enough labels to print!'},
+  'pda.pick.scanAgain': {'en': 'Please scan the item again!', 'zh': 'Please scan the item again!', 'de': 'Please scan the item again!'},
+  'pda.pick.orderMaybeCanceled': {'en': 'Order maybe canceled!', 'zh': 'Order maybe canceled!', 'de': 'Order maybe canceled!'},
+  'pda.pick.shipmentLabel': {'en': 'Shipment Label', 'zh': 'Shipment Label', 'de': 'Shipment Label'},
+  'pda.pick.printing': {'en': 'Label sent to the print station', 'zh': '面单已发送到打印站', 'de': 'Etikett an Druckstation gesendet'},
+  'pda.pick.picked': {'en': 'picked', 'zh': '已拣', 'de': 'gepickt'},
+  'pda.pick.saveFailed': {
+    'en': 'The labels were requested but the picklist progress could not be saved. Check the picklist on the PC.',
+    'zh': '面单已申请，但拣料进度保存失败。请在电脑端核对该 Picklist。',
+    'de': 'Etiketten angefordert, Fortschritt nicht gespeichert. Pickliste am PC prüfen.'
   },
-  'plt.offlineQueued': {
+  'pda.pick.requestLabelOnPc': {
+    'en': 'This order has no shipment label yet - request it at the PC (Pack Scan Order).',
+    'zh': '该订单还没有运单，请在电脑端 Pack Scan Order 中申请。',
+    'de': 'Noch kein Versandetikett - bitte am PC anfordern (Pack Scan Order).'
+  },
+  'pda.pick.st7': {'en': 'Partially Shipped', 'zh': '部分发货', 'de': 'Teilweise versandt'},
+  'pda.pick.st101': {'en': 'Done without waybill', 'zh': '无运单完成', 'de': 'Ohne Frachtbrief erledigt'},
+  'pda.pick.st102': {'en': 'Done without shipping', 'zh': '无发货完成', 'de': 'Ohne Versand erledigt'},
+
+  // ---------- print station ----------
+  'pda.print.notConfigured': {
+    'en': 'Print station not set: Settings > Print station (PrintBridge)',
+    'zh': '未设置打印站：设置 > 打印站 (PrintBridge)',
+    'de': 'Druckstation fehlt: Einstellungen > Druckstation (PrintBridge)'
+  },
+  'pda.print.failed': {'en': 'Printing failed: {msg}', 'zh': '打印失败：{msg}', 'de': 'Drucken fehlgeschlagen: {msg}'},
+
+  // ---------- loading scan ----------
+  'pda.plt.loaded': {'en': 'Loaded {n}', 'zh': '已装车 {n}', 'de': 'Verladen {n}'},
+  'pda.plt.pending': {'en': 'Pending {n}', 'zh': '待提交 {n}', 'de': 'Ausstehend {n}'},
+  'pda.plt.queued': {'en': 'Queued {code}', 'zh': '已加入队列 {code}', 'de': 'Eingereiht {code}'},
+  'pda.plt.flushError': {'en': 'Submit failed: {msg}', 'zh': '提交失败：{msg}', 'de': 'Übertragung fehlgeschlagen: {msg}'},
+  'pda.plt.offlineQueued': {
+    'en': 'No network - saved on this device, submitted automatically when back online',
     'zh': '无网络，已保存在本机，恢复网络后自动提交',
-    'en': 'Offline – saved on device, will submit when back online',
-    'de': 'Offline – lokal gespeichert, wird später übertragen'
+    'de': 'Offline - lokal gespeichert, wird automatisch übertragen'
   },
-  'plt.retryAll': {'zh': '重试提交', 'en': 'Retry submit', 'de': 'Erneut übertragen'},
-  'plt.pendingList': {'zh': '待提交', 'en': 'Pending', 'de': 'Ausstehend'},
-  'plt.serverList': {'zh': '已装车列表', 'en': 'Loaded parcels', 'de': 'Verladene Pakete'},
-  'plt.remove': {'zh': '移除', 'en': 'Remove', 'de': 'Entfernen'},
-  'plt.removeConfirm': {'zh': '从托盘移除 {code}？', 'en': 'Remove {code} from the pallet?', 'de': '{code} von der Palette entfernen?'},
-  'plt.removePending': {'zh': '删除待提交 {code}？', 'en': 'Drop pending {code}?', 'de': 'Ausstehende {code} verwerfen?'},
-  'plt.switchConfirm': {
-    'zh': '还有 {n} 个跟踪号未提交，切换托盘会保留它们在原托盘队列中。继续？',
-    'en': '{n} scans are still pending; they stay queued for the current pallet. Switch?',
-    'de': '{n} Scans ausstehend; sie bleiben für die aktuelle Palette gespeichert. Wechseln?'
+  'pda.plt.removeConfirm': {'en': 'Remove {code} from the pallet?', 'zh': '从托盘移除 {code}？', 'de': '{code} von der Palette entfernen?'},
+  'pda.plt.removePending': {'en': 'Drop pending scan {code}?', 'zh': '删除待提交 {code}？', 'de': 'Ausstehenden Scan {code} verwerfen?'},
+  'pda.plt.switchConfirm': {
+    'en': '{n} scans are still pending; they stay saved on this device for this pallet. Continue?',
+    'zh': '还有 {n} 条待提交，会保存在本机该托盘的队列中。继续？',
+    'de': '{n} Scans ausstehend; sie bleiben für diese Palette gespeichert. Fortfahren?'
   },
-  'plt.close': {'zh': '结束本托盘', 'en': 'Close pallet', 'de': 'Palette schließen'},
-  'plt.resolve.resolved': {'zh': '已匹配', 'en': 'Matched', 'de': 'Zugeordnet'},
-  'plt.resolve.pending': {'zh': '匹配中', 'en': 'Matching', 'de': 'Wird zugeordnet'},
-  'plt.resolve.not_found': {'zh': '未匹配订单', 'en': 'No order', 'de': 'Kein Auftrag'},
-  'plt.resolve.error': {'zh': '匹配错误', 'en': 'Error', 'de': 'Fehler'},
-  'plt.resolve.unknown': {'zh': '未知', 'en': 'Unknown', 'de': 'Unbekannt'},
-  'plt.importantNote': {'zh': '重要提示', 'en': 'Important', 'de': 'Wichtig'},
 
-  // ---------- stock ----------
-  'stk.scan': {'zh': '扫描库位码 / 商品条码 / SKU', 'en': 'Scan location / barcode / SKU', 'de': 'Lagerplatz / Barcode / SKU scannen'},
-  'stk.location': {'zh': '库位 {name}', 'en': 'Location {name}', 'de': 'Lagerplatz {name}'},
-  'stk.item': {'zh': '商品 {sku}', 'en': 'Item {sku}', 'de': 'Artikel {sku}'},
-  'stk.search': {'zh': '搜索 "{q}"', 'en': 'Search "{q}"', 'de': 'Suche "{q}"'},
-  'stk.rows': {'zh': '库存明细', 'en': 'Stock rows', 'de': 'Bestandszeilen'},
-  'stk.sum': {'zh': '合计 {n}', 'en': 'Total {n}', 'de': 'Summe {n}'},
-  'stk.available': {'zh': '可用 {n}', 'en': 'Available {n}', 'de': 'Verfügbar {n}'},
-  'stk.locked': {'zh': '锁定 {n}', 'en': 'Locked {n}', 'de': 'Gesperrt {n}'},
-  'stk.barcode': {'zh': '条码', 'en': 'Barcode', 'de': 'Barcode'},
-  'stk.weight': {'zh': '重量', 'en': 'Weight', 'de': 'Gewicht'},
-  'stk.zone': {'zh': '库区', 'en': 'Zone', 'de': 'Zone'},
-  'stk.loadMore': {'zh': '加载更多', 'en': 'Load more', 'de': 'Mehr laden'},
-  'stk.st0': {'zh': '无效', 'en': 'Invalid', 'de': 'Ungültig'},
-  'stk.st2': {'zh': '残损', 'en': 'Damaged', 'de': 'Beschädigt'},
-  'stk.st5': {'zh': '收货中', 'en': 'Receiving', 'de': 'Im Eingang'},
-  'stk.st10': {'zh': '正常', 'en': 'Valid', 'de': 'Gültig'},
+  // ---------- RMA ----------
+  'pda.rma.pending': {'en': 'Not inbounded', 'zh': '未入库', 'de': 'Nicht eingelagert'},
+  'pda.rma.new': {'en': 'New', 'zh': '新建', 'de': 'Neu'},
+  'pda.rma.opened': {'en': 'opened', 'zh': '已打开', 'de': 'geöffnet'},
+  'pda.rma.createFailed': {'en': 'The RMA could not be created', 'zh': 'RMA 创建失败', 'de': 'RMA konnte nicht angelegt werden'},
+  'pda.rma.discard': {'en': 'Discard unsaved changes?', 'zh': '放弃未保存的修改？', 'de': 'Ungespeicherte Änderungen verwerfen?'},
+  'pda.rma.noItems': {'en': 'Scan the items first', 'zh': '请先扫描商品', 'de': 'Bitte zuerst Artikel scannen'},
+  'pda.rma.customerRequired': {'en': 'Select the customer first', 'zh': '请先选择客户', 'de': 'Bitte zuerst den Kunden wählen'},
+  'pda.rma.originItems': {'en': 'Items of the original order', 'zh': '原订单商品', 'de': 'Artikel des Originalauftrags'},
+  'pda.rma.photo': {'en': 'Take photo', 'zh': '拍照', 'de': 'Foto'},
+  'pda.rma.photoUploaded': {'en': 'Photo uploaded', 'zh': '照片已上传', 'de': 'Foto hochgeladen'},
+  'pda.rma.inboundHint': {
+    'en': 'Scan a location: it is set for every line without one. Tap a line first to set only that line.',
+    'zh': '扫描库位：自动填给所有未设置库位的行。先点选某一行，则只设置该行。',
+    'de': 'Lagerplatz scannen: gilt für alle Zeilen ohne Platz. Zeile antippen, um nur diese zu setzen.'
+  },
+  'pda.rma.scanLocationAll': {'en': 'Location? (all open lines)', 'zh': '扫描库位（所有未设置行）', 'de': 'Lagerplatz? (alle offenen Zeilen)'},
+  'pda.rma.scanLocationOne': {'en': 'Location for {sku}?', 'zh': '扫描 {sku} 的库位', 'de': 'Lagerplatz für {sku}?'},
+  'pda.rma.locationRequired': {'en': 'Every line needs a location', 'zh': '每一行都需要库位', 'de': 'Jede Zeile braucht einen Lagerplatz'},
+  'pda.rma.inboundConfirm': {
+    'en': 'Book {n} piece(s) into stock and mark the RMA as inbounded?',
+    'zh': '确认将 {n} 件入库，并将该 RMA 标记为已入库？',
+    'de': '{n} Stück einlagern und RMA als eingelagert markieren?'
+  },
+  'pda.rma.st1': {'en': 'Pending Inbound', 'zh': '待入库', 'de': 'Einlagerung ausstehend'},
+  'pda.rma.st2': {'en': 'Receiving', 'zh': '收货中', 'de': 'Im Wareneingang'},
+  'pda.rma.st8': {'en': 'Counting', 'zh': '清点中', 'de': 'Zählung'},
+  'pda.rma.st10': {'en': 'Inbound list generated', 'zh': '已生成入库清单', 'de': 'Einlagerliste erstellt'},
 
-  // ---------- pick guide ----------
-  'pick.scanList': {'zh': '扫描拣货单号', 'en': 'Scan picklist no.', 'de': 'Pickliste scannen'},
-  'pick.scanItem': {'zh': '到库位后扫描商品', 'en': 'At the location, scan the item', 'de': 'Am Lagerplatz Artikel scannen'},
-  'pick.next': {'zh': '下一个库位', 'en': 'Next location', 'de': 'Nächster Lagerplatz'},
-  'pick.progress': {'zh': '已拣 {a}/{b}', 'en': 'Picked {a}/{b}', 'de': 'Gepickt {a}/{b}'},
-  'pick.done': {'zh': '本拣货单已全部核对完成', 'en': 'All lines checked', 'de': 'Alle Positionen geprüft'},
-  'pick.notInList': {'zh': '{sku} 不在本拣货单中', 'en': '{sku} is not on this picklist', 'de': '{sku} nicht auf der Pickliste'},
-  'pick.lineDone': {'zh': '{sku} 本行已拣满', 'en': '{sku} line already complete', 'de': '{sku} bereits vollständig'},
-  'pick.picked': {'zh': '已拣 {sku} @ {loc}', 'en': 'Picked {sku} @ {loc}', 'de': 'Gepickt {sku} @ {loc}'},
-  'pick.wrongLocation': {
-    'zh': '注意：{sku} 应在 {loc} 拣取',
-    'en': 'Note: {sku} should be picked at {loc}',
-    'de': 'Hinweis: {sku} gehört zu {loc}'
-  },
-  'pick.localOnly': {
-    'zh': '仅用于现场核对，不回写系统；正式拣货/打包仍在打包台完成。',
-    'en': 'For on-floor checking only – nothing is written back; packing stays at the pack station.',
-    'de': 'Nur zur Kontrolle – keine Rückmeldung ans System; Packen am Packplatz.'
-  },
-  'pick.canceled': {'zh': '该拣货单已取消', 'en': 'This picklist was cancelled', 'de': 'Pickliste storniert'},
-  'pick.reset': {'zh': '重置核对进度', 'en': 'Reset progress', 'de': 'Fortschritt zurücksetzen'},
-  'pick.undo': {'zh': '撤销', 'en': 'Undo', 'de': 'Rückgängig'},
+  // ---------- shipping / inventory ----------
+  'pda.ship.phSKU': {'en': 'Please scan SKU for QC', 'zh': 'Please scan SKU for QC', 'de': 'Please scan SKU for QC'},
+  'pda.ship.phSN': {'en': 'Please scan item serial number', 'zh': 'Please scan item serial number', 'de': 'Please scan item serial number'},
+  'pda.stk.scan': {'en': 'Location / Item ID / Barcode', 'zh': '库位 / 物品编号 / 条码', 'de': 'Lagerplatz / Artikel-ID / Barcode'},
 
   // ---------- history ----------
-  'his.empty': {'zh': '还没有扫描记录', 'en': 'No scans yet', 'de': 'Noch keine Scans'},
-  'his.clearConfirm': {'zh': '清空本机扫描记录？', 'en': 'Clear the history on this device?', 'de': 'Verlauf auf diesem Gerät löschen?'},
-  'his.ok': {'zh': '成功', 'en': 'OK', 'de': 'OK'},
-  'his.warn': {'zh': '提醒', 'en': 'Warning', 'de': 'Warnung'},
-  'his.error': {'zh': '失败', 'en': 'Failed', 'de': 'Fehler'},
-  'his.unknown': {'zh': '结果未知', 'en': 'Unknown', 'de': 'Unklar'},
-  'his.queued': {'zh': '排队中', 'en': 'Queued', 'de': 'Eingereiht'},
+  'pda.his.empty': {'en': 'No scans yet', 'zh': '还没有扫描记录', 'de': 'Noch keine Scans'},
+  'pda.his.clearConfirm': {'en': 'Clear the scan history on this device?', 'zh': '清空本机扫描记录？', 'de': 'Verlauf auf diesem Gerät löschen?'},
+  'pda.his.ok': {'en': 'OK', 'zh': '成功', 'de': 'OK'},
+  'pda.his.warn': {'en': 'Warning', 'zh': '提醒', 'de': 'Warnung'},
+  'pda.his.error': {'en': 'Failed', 'zh': '失败', 'de': 'Fehler'},
+  'pda.his.unknown': {'en': 'Unknown', 'zh': '结果未知', 'de': 'Unklar'},
+  'pda.his.queued': {'en': 'Queued', 'zh': '排队中', 'de': 'Eingereiht'},
 
   // ---------- settings ----------
-  'set.language': {'zh': '语言', 'en': 'Language', 'de': 'Sprache'},
-  'set.server': {'zh': '服务器地址', 'en': 'Server URL', 'de': 'Server-URL'},
-  'set.origin': {'zh': 'Origin（跨域白名单域名）', 'en': 'Origin (allow-listed web domain)', 'de': 'Origin (freigegebene Domain)'},
-  'set.scanner': {'zh': '扫描头', 'en': 'Scanner', 'de': 'Scanner'},
-  'set.scannerMode': {'zh': '广播模式', 'en': 'Broadcast mode', 'de': 'Broadcast-Modus'},
-  'set.scannerAuto': {'zh': '自动（兼容主流品牌）', 'en': 'Auto (all common brands)', 'de': 'Automatisch (gängige Marken)'},
-  'set.scannerNone': {'zh': '关闭广播', 'en': 'Off', 'de': 'Aus'},
-  'set.scannerCustom': {'zh': '仅自定义', 'en': 'Custom only', 'de': 'Nur benutzerdefiniert'},
-  'set.customAction': {'zh': '自定义广播 Action', 'en': 'Custom broadcast action', 'de': 'Eigene Broadcast-Action'},
-  'set.customExtra': {'zh': '自定义数据 Extra 键', 'en': 'Custom extra key', 'de': 'Eigener Extra-Schlüssel'},
-  'set.wedge': {'zh': '键盘模式扫描（以回车结尾）', 'en': 'Keyboard-wedge scanning (Enter suffix)', 'de': 'Tastatur-Modus (mit Enter)'},
-  'set.test': {'zh': '扫描测试：请扫任意条码', 'en': 'Scanner test: scan any barcode', 'de': 'Scannertest: beliebigen Code scannen'},
-  'set.testResult': {'zh': '收到：{code}', 'en': 'Received: {code}', 'de': 'Empfangen: {code}'},
-  'set.feedback': {'zh': '提示', 'en': 'Feedback', 'de': 'Rückmeldung'},
-  'set.sound': {'zh': '提示音', 'en': 'Sound', 'de': 'Ton'},
-  'set.vibrate': {'zh': '震动', 'en': 'Vibration', 'de': 'Vibration'},
-  'set.keepScreenOn': {'zh': '屏幕常亮', 'en': 'Keep screen on', 'de': 'Bildschirm anlassen'},
-  'set.network': {'zh': '网络', 'en': 'Network', 'de': 'Netzwerk'},
-  'set.connectTimeout': {'zh': '连接超时（秒）', 'en': 'Connect timeout (s)', 'de': 'Verbindungs-Timeout (s)'},
-  'set.receiveTimeout': {'zh': '响应超时（秒）', 'en': 'Response timeout (s)', 'de': 'Antwort-Timeout (s)'},
-  'set.about': {'zh': '关于', 'en': 'About', 'de': 'Info'},
-  'set.device': {'zh': '设备', 'en': 'Device', 'de': 'Gerät'},
-  'set.version': {'zh': '版本', 'en': 'Version', 'de': 'Version'},
-  'set.testBeep': {'zh': '测试提示音', 'en': 'Test sound', 'de': 'Ton testen'},
-  'set.serverChangedRelogin': {'zh': '服务器已更改，请重新登录', 'en': 'Server changed – please sign in again', 'de': 'Server geändert – bitte neu anmelden'},
-  'set.latency': {'zh': '延迟 {ms} ms', 'en': 'Latency {ms} ms', 'de': 'Latenz {ms} ms'},
-  'set.checkNow': {'zh': '检测网络', 'en': 'Check network', 'de': 'Netz prüfen'},
+  'pda.set.test': {'en': 'Scanner test: scan any barcode', 'zh': '扫描测试：请扫任意条码', 'de': 'Scannertest: beliebigen Code scannen'},
+  'pda.set.printStation': {'en': 'Print station (PrintBridge)', 'zh': '打印站 (PrintBridge)', 'de': 'Druckstation (PrintBridge)'},
+  'pda.set.printHost': {'en': 'Print station PC (IP[:port])', 'zh': '打印站电脑 (IP[:端口])', 'de': 'Druckstation-PC (IP[:Port])'},
+  'pda.set.printer': {'en': 'Printer', 'zh': '打印机', 'de': 'Drucker'},
+  'pda.set.printerOk': {'en': 'Connected, {n} printer(s)', 'zh': '已连接，{n} 台打印机', 'de': 'Verbunden, {n} Drucker'},
+  'pda.set.scanner': {'en': 'Scanner', 'zh': '扫描头', 'de': 'Scanner'},
+  'pda.set.scannerMode': {'en': 'Broadcast mode', 'zh': '广播模式', 'de': 'Broadcast-Modus'},
+  'pda.set.scannerAuto': {'en': 'Auto (iData and other brands)', 'zh': '自动（兼容 iData 等主流品牌）', 'de': 'Automatisch (iData und andere)'},
+  'pda.set.scannerNone': {'en': 'Off', 'zh': '关闭广播', 'de': 'Aus'},
+  'pda.set.scannerCustom': {'en': 'Custom only', 'zh': '仅自定义', 'de': 'Nur benutzerdefiniert'},
+  'pda.set.customAction': {'en': 'Custom broadcast action', 'zh': '自定义广播 Action', 'de': 'Eigene Broadcast-Action'},
+  'pda.set.customExtra': {'en': 'Custom extra key', 'zh': '自定义数据 Extra 键', 'de': 'Eigener Extra-Schlüssel'},
+  'pda.set.wedge': {'en': 'Keyboard mode scanning (Enter suffix)', 'zh': '键盘模式扫描（以回车结尾）', 'de': 'Tastatur-Modus (mit Enter)'},
+  'pda.set.feedback': {'en': 'Feedback', 'zh': '提示', 'de': 'Rückmeldung'},
+  'pda.set.sound': {'en': 'Sound', 'zh': '提示音', 'de': 'Ton'},
+  'pda.set.vibrate': {'en': 'Vibration', 'zh': '震动', 'de': 'Vibration'},
+  'pda.set.keepScreenOn': {'en': 'Keep screen on', 'zh': '屏幕常亮', 'de': 'Bildschirm anlassen'},
+  'pda.set.testBeep': {'en': 'Test sound', 'zh': '测试提示音', 'de': 'Ton testen'},
+  'pda.set.language': {'en': 'Language', 'zh': '语言', 'de': 'Sprache'},
+  'pda.set.network': {'en': 'Network', 'zh': '网络', 'de': 'Netzwerk'},
+  'pda.set.server': {'en': 'Server', 'zh': '服务器', 'de': 'Server'},
+  'pda.set.serverChanged': {'en': 'Server changed - please log in again', 'zh': '服务器已更改，请重新登录', 'de': 'Server geändert - bitte neu anmelden'},
+  'pda.set.origin': {'en': 'Origin (allow-listed web domain)', 'zh': 'Origin（跨域白名单域名）', 'de': 'Origin (freigegebene Domain)'},
+  'pda.set.connectTimeout': {'en': 'Connect timeout (s)', 'zh': '连接超时（秒）', 'de': 'Verbindungs-Timeout (s)'},
+  'pda.set.receiveTimeout': {'en': 'Response timeout (s)', 'zh': '响应超时（秒）', 'de': 'Antwort-Timeout (s)'},
+  'pda.set.checkNow': {'en': 'Check', 'zh': '检测', 'de': 'Prüfen'},
+  'pda.set.about': {'en': 'About', 'zh': '关于', 'de': 'Info'},
+  'pda.set.device': {'en': 'Device', 'zh': '设备', 'de': 'Gerät'},
 };

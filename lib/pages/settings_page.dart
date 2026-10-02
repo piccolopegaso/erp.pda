@@ -5,10 +5,11 @@ import '../core/device.dart';
 import '../core/i18n.dart';
 import '../core/net_monitor.dart';
 import '../core/settings.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 import 'login_page.dart';
 
-const appVersion = '1.0.0';
+const appVersion = '0.0.2';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -22,6 +23,8 @@ class _SettingsPageState extends State<SettingsPage> {
   AppState? _app;
   String _testCode = '';
   Map<String, dynamic> _device = {};
+  String _printTest = '';
+  bool _printBusy = false;
 
   @override
   void didChangeDependencies() {
@@ -49,18 +52,41 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editServer(AppSettings s) async {
-    final v = await askCode(context, title: tr('set.server'), initial: s.server);
+    final v = await askCode(context, title: tr('pda.set.server'), initial: s.server);
     if (v == null || v.isEmpty || v == s.server) return;
     s.server = v;
     if (!mounted) return;
     final app = AppScope.of(context);
     app.session.clearLocal();
     app.ws.close();
-    toast(context, tr('set.serverChangedRelogin'));
+    toast(context, tr('pda.set.serverChanged'));
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (_) => false);
   }
 
-  Future<void> _applyScanner() async => AppScope.of(context).device.configureScanner();
+  Future<void> _choosePrinter() async {
+    final app = AppScope.of(context);
+    setState(() {
+      _printBusy = true;
+      _printTest = '';
+    });
+    try {
+      final list = await app.printer.printers();
+      if (!mounted) return;
+      final v = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: Text(tr('pda.set.printer')),
+          children: [for (final p in list) SimpleDialogOption(onPressed: () => Navigator.pop(ctx, p), child: Text(p))],
+        ),
+      );
+      if (v != null) app.settings.printer = v;
+      setState(() => _printTest = tr('pda.set.printerOk', {'n': list.length}));
+    } catch (e) {
+      setState(() => _printTest = tr('pda.print.failed', {'msg': '$e'}));
+    } finally {
+      if (mounted) setState(() => _printBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,27 +95,47 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListenableBuilder(
       listenable: Listenable.merge([s, app.net]),
       builder: (context, _) => Scaffold(
-        appBar: AppBar(title: Text(tr('mod.settings'))),
+        appBar: elAppBar(tr('common.settings')),
         body: ListView(children: [
-          // scanner test
           Container(
-            margin: const EdgeInsets.all(10),
-            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFE3F2FD),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF1565C0)),
+              color: const Color(0xFFECF5FF),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFFB3D8FF)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('set.test'), style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              Text(_testCode.isEmpty ? '—' : tr('set.testResult', {'code': _testCode}),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(tr('pda.set.test'), style: const TextStyle(fontWeight: FontWeight.w600, color: El.primary)),
+              const SizedBox(height: 4),
+              Text(_testCode.isEmpty ? '—' : _testCode, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ]),
           ),
-          _header(tr('set.scanner')),
+          _header(tr('pda.set.printStation')),
           ListTile(
-            title: Text(tr('set.scannerMode')),
+            dense: true,
+            title: Text(tr('pda.set.printHost')),
+            subtitle: Text(s.printHost.isEmpty ? tr('pda.print.notConfigured') : s.printBridgeUrl),
+            onTap: () => _editText(tr('pda.set.printHost'), s.printHost, (v) => s.printHost = v),
+          ),
+          ListTile(
+            dense: true,
+            title: Text(tr('pda.set.printer')),
+            subtitle: Text(s.printer.isEmpty ? '—' : s.printer),
+            trailing: _printBusy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.arrow_drop_down),
+            onTap: s.printHost.isEmpty || _printBusy ? null : _choosePrinter,
+          ),
+          if (_printTest.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(_printTest, style: const TextStyle(fontSize: 12.5, color: El.textRegular)),
+            ),
+          _header(tr('pda.set.scanner')),
+          ListTile(
+            dense: true,
+            title: Text(tr('pda.set.scannerMode')),
             subtitle: Text(_presetLabel(s.scannerPreset)),
             trailing: const Icon(Icons.arrow_drop_down),
             onTap: () async {
@@ -97,42 +143,45 @@ class _SettingsPageState extends State<SettingsPage> {
                 context: context,
                 builder: (ctx) => SimpleDialog(children: [
                   for (final e in {
-                    'auto': tr('set.scannerAuto'),
+                    'auto': tr('pda.set.scannerAuto'),
                     for (final p in kScannerPresets) p.id: p.label,
-                    'custom': tr('set.scannerCustom'),
-                    'none': tr('set.scannerNone'),
+                    'custom': tr('pda.set.scannerCustom'),
+                    'none': tr('pda.set.scannerNone'),
                   }.entries)
                     SimpleDialogOption(onPressed: () => Navigator.pop(ctx, e.key), child: Text(e.value)),
                 ]),
               );
               if (v != null) {
                 s.scannerPreset = v;
-                await _applyScanner();
+                await app.device.configureScanner();
               }
             },
           ),
           ListTile(
-            title: Text(tr('set.customAction')),
+            dense: true,
+            title: Text(tr('pda.set.customAction')),
             subtitle: Text(s.customAction.isEmpty ? '—' : s.customAction),
-            onTap: () => _editText(tr('set.customAction'), s.customAction, (v) {
+            onTap: () => _editText(tr('pda.set.customAction'), s.customAction, (v) {
               s.customAction = v;
-              _applyScanner();
+              app.device.configureScanner();
             }),
           ),
           ListTile(
-            title: Text(tr('set.customExtra')),
+            dense: true,
+            title: Text(tr('pda.set.customExtra')),
             subtitle: Text(s.customExtra.isEmpty ? '—' : s.customExtra),
-            onTap: () => _editText(tr('set.customExtra'), s.customExtra, (v) {
+            onTap: () => _editText(tr('pda.set.customExtra'), s.customExtra, (v) {
               s.customExtra = v;
-              _applyScanner();
+              app.device.configureScanner();
             }),
           ),
-          SwitchListTile(title: Text(tr('set.wedge')), value: s.wedgeEnabled, onChanged: (v) => s.wedgeEnabled = v),
-          _header(tr('set.feedback')),
-          SwitchListTile(title: Text(tr('set.sound')), value: s.sound, onChanged: (v) => s.sound = v),
-          SwitchListTile(title: Text(tr('set.vibrate')), value: s.vibrate, onChanged: (v) => s.vibrate = v),
+          SwitchListTile(dense: true, title: Text(tr('pda.set.wedge')), value: s.wedgeEnabled, onChanged: (v) => s.wedgeEnabled = v),
+          _header(tr('pda.set.feedback')),
+          SwitchListTile(dense: true, title: Text(tr('pda.set.sound')), value: s.sound, onChanged: (v) => s.sound = v),
+          SwitchListTile(dense: true, title: Text(tr('pda.set.vibrate')), value: s.vibrate, onChanged: (v) => s.vibrate = v),
           SwitchListTile(
-            title: Text(tr('set.keepScreenOn')),
+            dense: true,
+            title: Text(tr('pda.set.keepScreenOn')),
             value: s.keepScreenOn,
             onChanged: (v) {
               s.keepScreenOn = v;
@@ -140,54 +189,54 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           ListTile(
-            title: Text(tr('set.testBeep')),
-            trailing: Wrap(spacing: 4, children: [
-              IconButton(onPressed: () => app.device.feedback(Beep.ok), icon: const Icon(Icons.check_circle, color: Colors.green)),
-              IconButton(onPressed: () => app.device.feedback(Beep.warn), icon: const Icon(Icons.warning, color: Colors.orange)),
-              IconButton(onPressed: () => app.device.feedback(Beep.error), icon: const Icon(Icons.cancel, color: Colors.red)),
+            dense: true,
+            title: Text(tr('pda.set.testBeep')),
+            trailing: Wrap(children: [
+              IconButton(onPressed: () => app.device.feedback(Beep.ok), icon: const Icon(Icons.check_circle, color: El.success)),
+              IconButton(onPressed: () => app.device.feedback(Beep.warn), icon: const Icon(Icons.warning, color: El.warning)),
+              IconButton(onPressed: () => app.device.feedback(Beep.error), icon: const Icon(Icons.cancel, color: El.danger)),
             ]),
           ),
-          _header(tr('set.language')),
+          _header(tr('pda.set.language')),
           for (final e in supportedLanguages.entries)
             RadioListTile<String>(
               dense: true,
               value: e.key,
               groupValue: s.language,
               title: Text(e.value),
-              onChanged: (v) => s.language = v ?? 'zh',
+              onChanged: (v) => s.language = v ?? 'en',
             ),
-          _header(tr('set.network')),
+          _header(tr('pda.set.network')),
+          ListTile(dense: true, title: Text(tr('pda.set.server')), subtitle: Text(s.server), onTap: () => _editServer(s)),
           ListTile(
-            title: Text(tr('set.server')),
-            subtitle: Text(s.server),
-            onTap: () => _editServer(s),
+            dense: true,
+            title: const Text('CarrierGate'),
+            subtitle: Text(s.cgServer),
+            onTap: () => _editText('CarrierGate', s.cgServer, (v) => s.cgServer = v),
           ),
           ListTile(
-            title: Text(tr('set.origin')),
+            dense: true,
+            title: Text(tr('pda.set.origin')),
             subtitle: Text(s.origin),
-            onTap: () => _editText(tr('set.origin'), s.origin, (v) => s.origin = v),
+            onTap: () => _editText(tr('pda.set.origin'), s.origin, (v) => s.origin = v),
           ),
+          ListTile(dense: true, title: Text(tr('pda.set.connectTimeout')), trailing: _stepper(s.connectTimeout, 3, 30, (v) => s.connectTimeout = v)),
+          ListTile(dense: true, title: Text(tr('pda.set.receiveTimeout')), trailing: _stepper(s.receiveTimeout, 10, 90, (v) => s.receiveTimeout = v)),
           ListTile(
-            title: Text(tr('set.connectTimeout')),
-            trailing: _stepper(s.connectTimeout, 3, 30, (v) => s.connectTimeout = v),
-          ),
-          ListTile(
-            title: Text(tr('set.receiveTimeout')),
-            trailing: _stepper(s.receiveTimeout, 10, 90, (v) => s.receiveTimeout = v),
-          ),
-          ListTile(
+            dense: true,
             title: Text(switch (app.net.state) {
-              NetState.good => tr('net.good'),
-              NetState.slow => tr('net.slow'),
-              NetState.offline => tr('net.offline'),
+              NetState.good => tr('pda.net.good'),
+              NetState.slow => tr('pda.net.slowShort'),
+              NetState.offline => tr('pda.net.offlineShort'),
             }),
-            subtitle: Text(tr('set.latency', {'ms': app.net.lastLatencyMs})),
-            trailing: OutlinedButton(onPressed: app.net.probe, child: Text(tr('set.checkNow'))),
+            subtitle: Text('${app.net.lastLatencyMs} ms'),
+            trailing: OutlinedButton(onPressed: app.net.probe, child: Text(tr('pda.set.checkNow'))),
           ),
-          _header(tr('set.about')),
-          ListTile(title: Text(tr('set.version')), subtitle: Text(appVersion)),
+          _header(tr('pda.set.about')),
+          const ListTile(dense: true, title: Text('Version'), subtitle: Text(appVersion)),
           ListTile(
-            title: Text(tr('set.device')),
+            dense: true,
+            title: Text(tr('pda.set.device')),
             subtitle: Text(_device.isEmpty
                 ? '—'
                 : '${_device['manufacturer']} ${_device['model']} · Android ${_device['release']} (API ${_device['sdk']})'),
@@ -199,20 +248,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   String _presetLabel(String id) {
-    if (id == 'auto') return tr('set.scannerAuto');
-    if (id == 'custom') return tr('set.scannerCustom');
-    if (id == 'none') return tr('set.scannerNone');
+    if (id == 'auto') return tr('pda.set.scannerAuto');
+    if (id == 'custom') return tr('pda.set.scannerCustom');
+    if (id == 'none') return tr('pda.set.scannerNone');
     return kScannerPresets.firstWhere((p) => p.id == id, orElse: () => kScannerPresets.last).label;
   }
 
   Widget _header(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
-        child: Text(t, style: const TextStyle(color: Color(0xFF1565C0), fontWeight: FontWeight.bold)),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 2),
+        child: Text(t, style: const TextStyle(color: El.primary, fontWeight: FontWeight.bold, fontSize: 13.5)),
       );
 
   Widget _stepper(int value, int min, int max, void Function(int) set) => Row(mainAxisSize: MainAxisSize.min, children: [
         IconButton(onPressed: value > min ? () => set(value - 1) : null, icon: const Icon(Icons.remove)),
-        Text('$value', style: const TextStyle(fontSize: 16)),
+        Text('$value', style: const TextStyle(fontSize: 15)),
         IconButton(onPressed: value < max ? () => set(value + 1) : null, icon: const Icon(Icons.add)),
       ]);
 }

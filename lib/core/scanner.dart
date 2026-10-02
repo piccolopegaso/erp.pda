@@ -91,7 +91,12 @@ class ScannerService {
 
     final key = e.logicalKey;
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.tab) {
-      if (_wedge.isEmpty) return false;
+      // Devices with a hardware keypad (e.g. iData 95W): a person pressing a digit and then
+      // Enter leaves 1-2 chars in the buffer (slow typing resets it) - that is not a scan.
+      if (_wedge.length < 3) {
+        _wedge.clear();
+        return false;
+      }
       _flushWedge();
       return true;
     }

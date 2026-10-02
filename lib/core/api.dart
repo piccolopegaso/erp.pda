@@ -47,11 +47,13 @@ class Api {
     _dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
       o.baseUrl = settings.server;
       o.connectTimeout = Duration(seconds: settings.connectTimeout);
-      o.sendTimeout = Duration(seconds: settings.receiveTimeout);
-      o.receiveTimeout = Duration(seconds: settings.receiveTimeout);
-      o.headers['Origin'] = settings.origin;
-      final token = settings.token;
-      if (token.isNotEmpty) o.headers['X-Token'] = token;
+      o.sendTimeout ??= Duration(seconds: settings.receiveTimeout);
+      o.receiveTimeout ??= Duration(seconds: settings.receiveTimeout);
+      if (o.extra['noAuth'] != true) {
+        o.headers['Origin'] = settings.origin;
+        final token = settings.token;
+        if (token.isNotEmpty) o.headers['X-Token'] = token;
+      }
       h.next(o);
     }));
   }
@@ -104,6 +106,44 @@ class Api {
         }
         throw ApiException(kind, _describe(e));
       }
+    }
+  }
+
+  /// Downloads a file (e.g. a label PDF returned by CarrierGate).
+  /// The session token is only sent to our own API / CarrierGate hosts.
+  Future<List<int>> downloadBytes(String url) async {
+    final host = Uri.tryParse(url)?.host ?? '';
+    final own = {Uri.tryParse(settings.server)?.host, Uri.tryParse(settings.cgServer)?.host}.contains(host);
+    try {
+      final resp = await _dio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          extra: {'noAuth': !own},
+          receiveTimeout: const Duration(seconds: 90),
+        ),
+      );
+      if ((resp.statusCode ?? 0) >= 400 || resp.data == null) {
+        throw ApiException(FailKind.server, 'HTTP ${resp.statusCode}', code: 'HTTP${resp.statusCode}');
+      }
+      return resp.data!;
+    } on DioException catch (e) {
+      throw ApiException(_classify(e), _describe(e));
+    }
+  }
+
+  /// multipart/form-data upload (web: ImageUpload -> /v0/statics/upload/image, field "upload").
+  Future<dynamic> upload(String path, String filePath, {String field = 'upload'}) async {
+    final form = FormData.fromMap({field: await MultipartFile.fromFile(filePath, filename: filePath.split('/').last)});
+    try {
+      final resp = await _dio.post<dynamic>(
+        path,
+        data: form,
+        options: Options(responseType: ResponseType.json, validateStatus: (_) => true, sendTimeout: const Duration(seconds: 90)),
+      );
+      return _unwrap(resp);
+    } on DioException catch (e) {
+      throw ApiException(_classify(e), _describe(e));
     }
   }
 

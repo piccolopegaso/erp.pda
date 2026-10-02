@@ -1,53 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../core/app_state.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 import 'history_page.dart';
 import 'logging_scan_page.dart';
 import 'login_page.dart';
 import 'pallet_page.dart';
-import 'pick_guide_page.dart';
-import 'receiving_scan_page.dart';
+import 'picklist/picklist_page.dart';
+import 'rma/rma_page.dart';
 import 'settings_page.dart';
 import 'shipping_scan_page.dart';
 import 'sn_swap_page.dart';
 import 'stock_page.dart';
 
-class _Module {
-  const _Module(this.key, this.icon, this.color, this.builder);
+class _Menu {
+  const _Menu(this.title, this.icon, this.builder);
 
-  final String key;
+  final String Function() title;
   final IconData icon;
-  final Color color;
   final WidgetBuilder builder;
 }
 
+/// Same menu names and icons as the web sidebar (router/modules/warehouseEp.js, wms.js).
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  static final _sections = <String, List<_Module>>{
-    'home.sectionOutbound': [
-      _Module('mod.shipping', Icons.local_shipping, const Color(0xFF1565C0), (_) => const ShippingScanPage()),
-      _Module('mod.pallet', Icons.view_in_ar, const Color(0xFF00838F), (_) => const PalletPage()),
-      _Module('mod.pick', Icons.shopping_cart_checkout, const Color(0xFF2E7D32), (_) => const PickGuidePage()),
-      _Module('mod.logging', Icons.fact_check, const Color(0xFF5D4037), (_) => const LoggingScanPage()),
+  static final _groups = <String Function(), List<_Menu>>{
+    () => 'Warehouse EP': [
+      _Menu(() => tr('wms.picklist'), FontAwesomeIcons.dolly, (_) => const PicklistPage()),
+      _Menu(() => tr('wms.shippingScan'), FontAwesomeIcons.truckRampBox, (_) => const ShippingScanPage()),
+      _Menu(() => tr('wms.palletHandover'), FontAwesomeIcons.pallet, (_) => const PalletPage()),
+      _Menu(() => tr('wms.loggingScan'), FontAwesomeIcons.personDotsFromLine, (_) => const LoggingScanPage()),
+      _Menu(() => tr('wms.snScan'), FontAwesomeIcons.barcode, (_) => const SnSwapPage()),
+      _Menu(() => tr('common.rma'), FontAwesomeIcons.parachuteBox, (_) => const RmaPage()),
     ],
-    'home.sectionInbound': [
-      _Module('mod.receiving', Icons.assignment_return, const Color(0xFFEF6C00), (_) => const ReceivingScanPage()),
-      _Module('mod.snswap', Icons.qr_code_2, const Color(0xFF6A1B9A), (_) => const SnSwapPage()),
+    () => tr('wms.wms'): [
+      _Menu(() => tr('wms.inventory'), FontAwesomeIcons.boxesStacked, (_) => const StockPage()),
     ],
-    'home.sectionStock': [
-      _Module('mod.stock', Icons.inventory_2, const Color(0xFF283593), (_) => const StockPage()),
-    ],
-    'home.sectionOther': [
-      _Module('mod.history', Icons.history, const Color(0xFF455A64), (_) => const HistoryPage()),
-      _Module('mod.settings', Icons.settings, const Color(0xFF455A64), (_) => const SettingsPage()),
+    () => 'PDA': [
+      _Menu(() => tr('pda.history'), FontAwesomeIcons.clockRotateLeft, (_) => const HistoryPage()),
+      _Menu(() => tr('common.settings'), FontAwesomeIcons.gear, (_) => const SettingsPage()),
     ],
   };
 
   Future<void> _logout(BuildContext context) async {
-    if (!await confirm(context, tr('home.logoutConfirm'), okText: tr('home.logout'))) return;
+    if (!await confirm(context, tr('pda.logoutConfirm'), okText: tr('common.logout'))) return;
     if (!context.mounted) return;
     final app = AppScope.of(context);
     await app.session.logout();
@@ -65,68 +65,59 @@ class HomePage extends StatelessWidget {
         final user = app.session.user;
         final name = user == null ? app.settings.account : (user.name.isNotEmpty ? user.name : user.account);
         return Scaffold(
+          backgroundColor: El.sidebar,
           appBar: AppBar(
-            title: Text(tr('app.title')),
+            backgroundColor: El.sidebar,
+            foregroundColor: Colors.white,
+            title: const Text('MICLinker PDA', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
             actions: [
               const NetBadge(),
-              IconButton(icon: const Icon(Icons.logout), tooltip: tr('home.logout'), onPressed: () => _logout(context)),
+              IconButton(icon: const Icon(Icons.logout), tooltip: tr('common.logout'), onPressed: () => _logout(context)),
             ],
           ),
           body: Column(children: [
             const OfflineBanner(),
+            Container(
+              width: double.infinity,
+              color: El.sidebarSub,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(children: [
+                const Icon(Icons.account_circle, color: Color(0xFFBFCBD9), size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text(name, style: const TextStyle(color: Color(0xFFBFCBD9)), overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 20),
-                children: [
+              child: ListView(children: [
+                for (final g in _groups.entries) ...[
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-                    child: Text(tr('home.hello', {'name': name}),
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Text(g.key(), style: const TextStyle(color: Color(0xFF8391A5), fontSize: 12.5, fontWeight: FontWeight.w600)),
                   ),
-                  for (final sec in _sections.entries) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-                      child: Text(tr(sec.key), style: const TextStyle(color: Color(0xFF666666), fontWeight: FontWeight.w600)),
+                  for (final m in g.value)
+                    Material(
+                      color: El.sidebar,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: m.builder)),
+                        child: Container(
+                          height: 50,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(children: [
+                            SizedBox(width: 24, child: FaIcon(m.icon, size: 17, color: const Color(0xFFBFCBD9))),
+                            const SizedBox(width: 14),
+                            Expanded(child: Text(m.title(), style: const TextStyle(color: Color(0xFFBFCBD9), fontSize: 15.5))),
+                            const Icon(Icons.chevron_right, color: Color(0xFF5A6B80), size: 20),
+                          ]),
+                        ),
+                      ),
                     ),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 1.55,
-                      children: [for (final m in sec.value) _tile(context, m)],
-                    ),
-                  ],
                 ],
-              ),
+                const SizedBox(height: 20),
+              ]),
             ),
           ]),
         );
       },
-    );
-  }
-
-  Widget _tile(BuildContext context, _Module m) {
-    return Material(
-      color: m.color,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: m.builder)),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(m.icon, color: Colors.white, size: 30),
-            const Spacer(),
-            Text(tr(m.key), style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-            Text(tr('${m.key}.desc'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
-          ]),
-        ),
-      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 
 class _Pending {
@@ -44,7 +45,7 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
   bool _flushing = false;
   bool _paused = false;
   bool _needsReconcile = false;
-  Tone _tone = Tone.info;
+  ElType _tone = ElType.info;
   String _title = '';
   String _sub = '';
   StreamSubscription<void>? _netSub;
@@ -107,7 +108,7 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
     if (code.toUpperCase() == _code.toUpperCase()) {
       await _refreshServer();
       app.device.ok();
-      _show(Tone.ok, '${tr('plt.current')}: $_code', tr('plt.loaded', {'n': _serverRows.length}));
+      _show(ElType.success, '${tr('wms.palletCurrentLoading')}: $_code', tr('pda.plt.loaded', {'n': _serverRows.length}));
       return;
     }
     _enqueue(code);
@@ -119,7 +120,7 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
       final row = data is Map ? data['pallet'] : null;
       if (row is! Map) {
         app.device.error();
-        _show(Tone.error, tr('plt.notFound', {'code': scan}));
+        _show(ElType.danger, tr('wms.palletLoadNotFound', {'value': scan}));
         log(scan, Outcome.error, 'pallet not found');
         return;
       }
@@ -129,8 +130,8 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
       _needsReconcile = _queue.isNotEmpty;
       await _refreshServer();
       app.device.ok();
-      _show(Tone.ok, '${tr('plt.current')}: $_code',
-          data['ambiguous'] == true ? tr('plt.ambiguous', {'code': _code}) : tr('plt.scanTracking'));
+      _show(ElType.success, '${tr('wms.palletCurrentLoading')}: $_code',
+          data['ambiguous'] == true ? tr('wms.palletPlateLoadAmbiguous', {'code': _code}) : tr('wms.palletScanTracking'));
       log(scan, Outcome.ok, _code);
       final note = asStr(_pallet!['importantNote']);
       if (note.isNotEmpty && mounted) {
@@ -139,16 +140,16 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
         showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: Text(tr('plt.importantNote')),
+            title: Text(tr('wms.palletImportantNote')),
             content: Text(note, style: const TextStyle(fontSize: 17)),
-            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('common.ok')))],
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('common.confirmButtonText')))],
           ),
         );
       }
       _flush();
     } catch (e) {
       app.device.error();
-      _show(e is ApiException && e.kind == FailKind.unknown ? Tone.unknown : Tone.error, errorText(e), scan);
+      _show(e is ApiException && e.kind == FailKind.unknown ? ElType.warning : ElType.danger, errorText(e), scan);
       log(scan, outcomeOf(e), errorText(e));
     }
   }
@@ -189,18 +190,18 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
       _saveQueue();
       if (_paused) {
         app.device.warn();
-        _show(Tone.warn, tr('plt.queued', {'code': raw}), tr('plt.queueStopped'));
+        _show(ElType.warning, tr('pda.plt.queued', {'code': raw}), tr('wms.palletScanQueueInterrupted'));
       } else {
         app.device.ok();
-        _show(Tone.ok, tr('plt.queued', {'code': raw}), tr('plt.pending', {'n': _queue.length}));
+        _show(ElType.success, tr('pda.plt.queued', {'code': raw}), tr('pda.plt.pending', {'n': _queue.length}));
       }
       _flush();
     } else if (dupPending > 0) {
       app.device.error();
-      _show(Tone.warn, tr('plt.dupPending'), raw);
+      _show(ElType.warning, tr('wms.palletDupPending'), raw);
     } else if (dupServer > 0) {
       app.device.error();
-      _show(Tone.warn, tr('plt.dupServer'), raw);
+      _show(ElType.warning, tr('wms.palletDupServer'), raw);
     }
   }
 
@@ -244,21 +245,21 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
             _paused = true;
             app.device.error();
             log(head.trackingNo, Outcome.error, head.error);
-            _show(Tone.error, tr('plt.flushError', {'msg': head.error}), head.trackingNo);
+            _show(ElType.danger, tr('pda.plt.flushError', {'msg': head.error}), head.trackingNo);
             return;
           }
           // network or session problem: keep everything queued
           if (e.kind == FailKind.unknown) _needsReconcile = true;
           app.device.warn();
           log(head.trackingNo, Outcome.queued, errorText(e));
-          _show(Tone.unknown, tr('plt.offlineQueued'), tr('plt.pending', {'n': _queue.length}));
+          _show(ElType.warning, tr('pda.plt.offlineQueued'), tr('pda.plt.pending', {'n': _queue.length}));
           _retryTimer = Timer(const Duration(seconds: 15), _flush);
           return;
         }
       }
       if (_queue.isEmpty) {
         await _refreshServer();
-        _show(Tone.ok, tr('plt.loaded', {'n': _serverRows.length}), code);
+        _show(ElType.success, tr('pda.plt.loaded', {'n': _serverRows.length}), code);
       }
     } finally {
       if (mounted) setState(() => _flushing = false);
@@ -281,7 +282,7 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
   }
 
   Future<void> _removePending(_Pending p) async {
-    if (!await confirm(context, tr('plt.removePending', {'code': p.trackingNo}))) return;
+    if (!await confirm(context, tr('pda.plt.removePending', {'code': p.trackingNo}))) return;
     setState(() {
       _queue.remove(p);
       _paused = _queue.any((q) => q.error.isNotEmpty);
@@ -292,19 +293,19 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
 
   Future<void> _removeServer(Map r) async {
     final t = _trackingOf(r);
-    if (t.isEmpty || !await confirm(context, tr('plt.removeConfirm', {'code': t}))) return;
+    if (t.isEmpty || !await confirm(context, tr('pda.plt.removeConfirm', {'code': t}))) return;
     try {
       await app.api.command('POST', '/v0/wms/pallets/${Uri.encodeComponent(_code)}/tracking/remove', data: {'trackingNo': t});
       log(t, Outcome.ok, 'removed from $_code');
       await _refreshServer();
     } catch (e) {
       app.device.error();
-      if (mounted) toast(context, errorText(e), tone: Tone.error);
+      if (mounted) toast(context, errorText(e), type: ElType.danger);
     }
   }
 
   Future<void> _closePallet() async {
-    if (_queue.isNotEmpty && !await confirm(context, tr('plt.switchConfirm', {'n': _queue.length}))) return;
+    if (_queue.isNotEmpty && !await confirm(context, tr('pda.plt.switchConfirm', {'n': _queue.length}))) return;
     _retryTimer?.cancel();
     setState(() {
       _pallet = null;
@@ -316,7 +317,7 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
     });
   }
 
-  void _show(Tone t, String title, [String sub = '']) {
+  void _show(ElType t, String title, [String sub = '']) {
     if (!mounted) return;
     setState(() {
       _tone = t;
@@ -331,12 +332,12 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
   Widget build(BuildContext context) {
     final p = _pallet;
     return ScanScaffold(
-      title: tr('mod.pallet'),
-      prompt: p == null ? tr('plt.scanPallet') : tr('plt.scanTracking'),
+      title: tr('wms.palletHandover'),
+      placeholder: p == null ? tr('wms.palletLoadScanPh') : tr('wms.palletScanTracking'),
       busy: busy,
       onManual: manualEntry,
       actions: [
-        if (p != null) IconButton(onPressed: _closePallet, icon: const Icon(Icons.logout), tooltip: tr('plt.close')),
+        if (p != null) IconButton(onPressed: _closePallet, icon: const Icon(Icons.logout), tooltip: tr('wms.palletClearSession')),
       ],
       children: p == null ? _landing() : _loaded(p),
     );
@@ -345,20 +346,18 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
   List<Widget> _landing() {
     final waiting = _palletsWithQueue();
     return [
-      StatusCard(
-        tone: _title.isEmpty ? Tone.info : _tone,
-        title: _title.isEmpty ? tr('common.waitScan') : _title,
-        subtitle: _title.isEmpty ? tr('plt.scanPallet') : _sub,
-      ),
+      _title.isEmpty
+          ? ElResult(type: ElType.info, title: tr('wms.palletLoadResultTitle'), subTitle: tr('wms.palletLoadResultSub'))
+          : ElResult(type: _tone, title: _title, subTitle: _sub),
       if (waiting.isNotEmpty)
-        Card(
-          margin: const EdgeInsets.all(10),
+        ElCard(
+          padding: EdgeInsets.zero,
           child: Column(children: [
             for (final e in waiting.entries)
               ListTile(
                 leading: const Icon(Icons.cloud_upload, color: Color(0xFFEF6C00)),
                 title: Text(e.key),
-                subtitle: Text(tr('plt.pending', {'n': e.value})),
+                subtitle: Text(tr('pda.plt.pending', {'n': e.value})),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: busy ? null : () => _loadPallet(e.key),
               ),
@@ -369,81 +368,74 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
 
   List<Widget> _loaded(Map<String, dynamic> p) {
     final unit = asStr(p['unitStr']);
-    final unitText = unit == 'Box' ? tr('plt.unitBox') : (unit == 'Pallet' ? tr('plt.unitPallet') : unit);
+    final unitText = unit == 'Box' ? tr('wms.palletUnitBox') : (unit == 'Pallet' ? tr('wms.palletUnitPallet') : unit);
     return [
-      Container(
-        margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xFF00838F), borderRadius: BorderRadius.circular(10)),
+      ElCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tr('plt.current'), style: const TextStyle(color: Colors.white70)),
-          Text(_code, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(tr('wms.palletCurrentLoading'), style: const TextStyle(color: El.textSecondary, fontSize: 13)),
+          Text(_code, style: const TextStyle(color: El.textPrimary, fontSize: 22, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          Wrap(spacing: 10, runSpacing: 4, children: [
-            _tag(tr('plt.loaded', {'n': _serverRows.length})),
-            if (_queue.isNotEmpty) _tag(tr('plt.pending', {'n': _queue.length}), warn: true),
-            if (unitText.isNotEmpty) _tag(unitText),
-            if (asStr(p['pickupCarrier']).isNotEmpty) _tag(asStr(p['pickupCarrier'])),
-            if (asStr(p['plateNumber2']).isNotEmpty) _tag('${tr('plt.plate')}: ${asStr(p['plateNumber2'])}'),
-            if (asStr(p['pickupDate']).isNotEmpty) _tag('${tr('plt.pickupDate')}: ${asStr(p['pickupDate'])}'),
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            ElTag(tr('pda.plt.loaded', {'n': _serverRows.length}), type: ElType.success),
+            if (_queue.isNotEmpty) ElTag(tr('pda.plt.pending', {'n': _queue.length}), type: ElType.warning),
+            if (unitText.isNotEmpty) ElTag(unitText, type: ElType.info),
+            if (asStr(p['pickupCarrier']).isNotEmpty) ElTag(asStr(p['pickupCarrier']), type: ElType.info),
+            if (asStr(p['plateNumber2']).isNotEmpty) ElTag('${tr('wms.palletPlateNumber2')}: ${asStr(p['plateNumber2'])}', type: ElType.info),
+            if (asStr(p['pickupDate']).isNotEmpty) ElTag('${tr('wms.palletPickupDate')}: ${asStr(p['pickupDate'])}', type: ElType.info),
           ]),
         ]),
       ),
-      if (_title.isNotEmpty) StatusCard(tone: _tone, title: _title, subtitle: _sub),
+      if (_title.isNotEmpty) ElAlert(type: _tone, title: _title, description: _sub),
       if (asStr(p['importantNote']).isNotEmpty)
-        StatusCard(tone: Tone.warn, title: tr('plt.importantNote'), subtitle: asStr(p['importantNote'])),
+        ElAlert(type: ElType.warning, title: tr('wms.palletImportantNote'), description: asStr(p['importantNote'])),
       if (_queue.isNotEmpty)
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        ElCard(
+          padding: EdgeInsets.zero,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
-              child: Row(children: [
-                Expanded(
-                  child: Text('${tr('plt.pendingList')} (${_queue.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                if (_flushing)
-                  const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                  )
-                else
-                  TextButton.icon(
-                    onPressed: () => _flush(manual: true),
-                    icon: const Icon(Icons.refresh),
-                    label: Text(tr('plt.retryAll')),
-                  ),
-              ]),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Text('${tr('wms.palletPendingList')} (${_queue.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: FilledButton.icon(
+                style: elButton(ElType.warning, plain: true),
+                onPressed: _flushing ? null : () => _flush(manual: true),
+                icon: _flushing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh, size: 18),
+                label: Text(tr('wms.palletRetryPendingScans')),
+              ),
             ),
             if (_paused)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(tr('plt.queueStopped'), style: const TextStyle(color: Color(0xFFC62828))),
+                child: Text(tr('wms.palletScanQueueInterrupted'), style: const TextStyle(color: El.danger)),
               ),
             for (final q in _queue)
               ListTile(
                 dense: true,
                 leading: Icon(q.error.isEmpty ? Icons.schedule : Icons.error, color: q.error.isEmpty ? Colors.orange : Colors.red),
                 title: Text(q.trackingNo),
-                subtitle: q.error.isEmpty ? null : Text(q.error, style: const TextStyle(color: Color(0xFFC62828))),
+                subtitle: q.error.isEmpty ? null : Text(q.error, style: const TextStyle(color: El.danger)),
                 trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _removePending(q)),
               ),
           ]),
         ),
-      Card(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      ElCard(
+        padding: EdgeInsets.zero,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
             child: Row(children: [
               Expanded(
-                child: Text('${tr('plt.serverList')} (${_serverRows.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                child: Text('${tr('wms.palletServerList')} (${_serverRows.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               IconButton(onPressed: _refreshServer, icon: const Icon(Icons.refresh)),
             ]),
           ),
           if (_serverRows.isEmpty)
-            Padding(padding: const EdgeInsets.all(12), child: Text(tr('common.empty'))),
+            Padding(padding: const EdgeInsets.all(12), child: Text(tr('wms.palletNoTrackingYet'))),
           for (final r in _serverRows.reversed) _serverTile(r),
         ]),
       ),
@@ -455,10 +447,10 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
     var st = asStr(meta['resolveStatus']);
     if (st.isEmpty) st = asStr(r['outboundUNID']).isNotEmpty ? 'resolved' : 'unknown';
     final color = switch (st) {
-      'resolved' => const Color(0xFF2E7D32),
-      'pending' => const Color(0xFFEF6C00),
-      'error' => const Color(0xFFC62828),
-      _ => const Color(0xFF757575),
+      'resolved' => El.success,
+      'pending' => El.warning,
+      'error' => El.danger,
+      _ => El.info,
     };
     final err = asStr(meta['resolveError']);
     return ListTile(
@@ -467,19 +459,19 @@ class _PalletPageState extends State<PalletPage> with ScanPageMixin {
       subtitle: Text([
         asStr(r['outboundUNID']),
         asStr(r['carrier']),
-        tr('plt.resolve.$st'),
+        _resolveText(st),
         if (err.isNotEmpty) err,
       ].where((s) => s.isNotEmpty).join(' · '), style: TextStyle(color: color)),
       trailing: IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () => _removeServer(r)),
     );
   }
 
-  Widget _tag(String s, {bool warn = false}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: warn ? const Color(0xFFEF6C00) : Colors.white24,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(s, style: const TextStyle(color: Colors.white, fontSize: 13)),
-      );
+  String _resolveText(String st) => switch (st) {
+        'resolved' => tr('wms.palletResolveResolved'),
+        'pending' => tr('wms.palletResolvePending'),
+        'not_found' => tr('wms.palletResolveNotFound'),
+        'error' => tr('wms.palletResolveError'),
+        _ => tr('wms.palletResolveUnknown'),
+      };
+
 }

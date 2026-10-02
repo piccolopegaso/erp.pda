@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../core/api.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 
 enum _Mode { none, skuQC, sn }
 
-/// Outbound shipping scan (web: views/warehouse/shippingScan.vue).
-///
-/// Scan a tracking / FBA / order number -> the server marks the parcel as scanned.
-/// If the order requires a SKU QC and/or item serial numbers, the screen switches
-/// into the matching prompt until all required scans are done.
+enum _Result { idle, ok, already, attention, notFound, error }
+
+/// Shipping Scan (web: views/warehouse/shippingScan.vue).
+/// Scan a tracking / FBA / order number; orders that need a SKU QC and/or item
+/// serial numbers switch into the matching prompt until all required scans are done.
 class ShippingScanPage extends StatefulWidget {
   const ShippingScanPage({super.key});
 
@@ -21,27 +21,22 @@ class ShippingScanPage extends StatefulWidget {
 
 class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin {
   @override
-  String get moduleName => 'mod.shipping';
+  String get moduleName => 'wms.shippingScan';
 
   Map<String, dynamic> _order = {};
   _Mode _mode = _Mode.none;
-  Tone _tone = Tone.info;
+  _Result _result = _Result.idle;
   String _title = '';
-  String _sub = '';
+  String _scanned = '';
   String _promptError = '';
 
   int get _id => asInt(_order['id']);
 
-  String get _prompt {
-    switch (_mode) {
-      case _Mode.skuQC:
-        return tr('ship.scanSKU', {'item': asStr(_order['skuQCCurrentItemID'])});
-      case _Mode.sn:
-        return tr('ship.scanSN', {'item': _currentSNItem});
-      case _Mode.none:
-        return tr('ship.scanShipment');
-    }
-  }
+  String get _placeholder => switch (_mode) {
+        _Mode.skuQC => tr('pda.ship.phSKU'),
+        _Mode.sn => tr('pda.ship.phSN'),
+        _Mode.none => 'Tracking No./FBA /Order No.',
+      };
 
   String get _currentSNItem =>
       asStr(_order['snCurrentItemID']).isNotEmpty ? asStr(_order['snCurrentItemID']) : asStr(_order['itemID']);
@@ -58,7 +53,7 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
     }
   }
 
-  // ---------- helpers mirroring the web logic ----------
+  // ---------- helpers mirroring shippingScan.vue ----------
 
   List<String> get _sent => (_order['shipBundleSent'] as List? ?? const []).map((e) => '$e').toList()..sort();
 
@@ -79,33 +74,29 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
     return asInt(d['snRemainingQty']) > 0 || (req > 0 && asInt(d['snScannedQty']) < req);
   }
 
+  /// buildShippingScanTitle()
   String _statusTitle(Map d) {
     final a = (d['shipBundleSent'] as List? ?? const []).length;
     final b = asInt(d['shipQty']);
-    final args = {'a': a, 'b': b};
-    switch (asInt(d['status'])) {
-      case 91:
-        return tr('ship.st91');
-      case 95:
-        return tr('ship.st95', args);
-      case 96:
-        return tr('ship.st96', args);
-      case 99:
-        return tr('ship.st99', args);
-      case 100:
-        return tr('ship.st100', args);
-      default:
-        return tr('ship.stDefault', args);
-    }
+    return switch (asInt(d['status'])) {
+      91 => 'SN Required',
+      95 => '$a/$b Partial QC',
+      96 => '$a/$b Ready to Carrier Pickup',
+      99 => '$a/$b Shipped Partially',
+      100 => '$a/$b Shipped',
+      _ => '$a/$b Scanned',
+    };
   }
 
-  void _show(Tone tone, String title, [String sub = '']) {
-    setState(() {
-      _tone = tone;
-      _title = title;
-      _sub = sub;
-    });
-  }
+  /// shippingResultSubtitle
+  String _statusSubtitle(Map d) => switch (asInt(d['status'])) {
+        91 => 'Item serial number scan is required before this order can continue.',
+        95 => 'This order is now in Partial QC.',
+        96 => '',
+        99 => 'This order is partially shipped.',
+        100 => 'This order is marked as shipped.',
+        _ => 'Shipping scan completed.',
+      };
 
   void _applySKU(Map r) {
     _order = {
@@ -148,29 +139,31 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
     _applySN(await _snProgress());
     _mode = _Mode.sn;
     _promptError = '';
-    app.device.warn();
-    _show(Tone.warn, tr('ship.scanSN', {'item': _currentSNItem}),
-        tr('ship.snProgress', {'a': asInt(_order['snScannedQty']), 'b': asInt(_order['snRequiredQty'])}));
+    _title = 'Scan SN for ${_currentSNItem.isEmpty ? 'required item' : _currentSNItem}';
+    app.device.error(); // web: playBeepLong() to draw attention
   }
 
   void _openSKUPrompt() {
     _mode = _Mode.skuQC;
     _promptError = '';
-    app.device.warn();
-    _show(Tone.warn, tr('ship.scanSKU', {'item': asStr(_order['skuQCCurrentItemID'])}),
-        tr('ship.skuProgress', {'a': asInt(_order['skuQCScannedQty']), 'b': asInt(_order['skuQCRequiredQty'])}));
+    final cur = asStr(_order['skuQCCurrentItemID']);
+    _title = 'Scan SKU QC for ${cur.isEmpty ? 'required item' : cur}';
+    app.device.error();
   }
 
   // ---------- scan handlers ----------
 
   Future<void> _scanShipment(String code) async {
+    _scanned = code;
     try {
       final data = await app.api.command('GET', '/v0/p11yorders/scanShipSN', params: {'q': code});
       if (data is! Map || asStr(data['unid']).isEmpty) {
-        _order = {};
         app.device.error();
-        _show(Tone.error, tr('common.notFound', {'code': code}));
-        log(code, Outcome.error, 'not found');
+        setState(() {
+          _order = {};
+          _result = _Result.notFound;
+        });
+        log(code, Outcome.error, 'Order Not Found');
         return;
       }
       _order = Map<String, dynamic>.from(data);
@@ -178,8 +171,8 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
       final st = asInt(_order['status']);
       if (st == 2 || st == 120) {
         app.device.error();
-        _show(Tone.error, tr('ship.attention'), code);
-        log(code, Outcome.error, 'status $st');
+        setState(() => _result = _Result.attention);
+        log(code, Outcome.error, 'Attention: status $st');
         return;
       }
       if (_order['alreadyScanned'] == true) {
@@ -187,35 +180,44 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
           _applySKU(await _skuProgress());
           if (_needSKU(_order)) {
             _openSKUPrompt();
+            setState(() => _result = _Result.ok);
             log(code, Outcome.warn, 'SKU QC');
             return;
           }
           if (_needSN(_order)) {
             await _openSNPrompt();
+            setState(() => _result = _Result.ok);
             log(code, Outcome.warn, 'SN');
             return;
           }
         }
         app.device.error();
-        _show(Tone.warn, tr('ship.already', {'title': _statusTitle(_order)}), code);
-        log(code, Outcome.warn, 'already scanned');
+        setState(() {
+          _result = _Result.already;
+          _title = st == 96
+              ? 'Already Scanned - ${(_order['shipBundleSent'] as List? ?? const []).length}/${asInt(_order['shipQty'])}'
+              : 'Already Scanned - ${_statusTitle(_order)}';
+        });
+        log(code, Outcome.warn, _title);
         return;
       }
       if (_needSKU(_order)) {
         _openSKUPrompt();
-        log(code, Outcome.ok, 'SKU QC required');
       } else if (_needSN(_order)) {
         await _openSNPrompt();
-        log(code, Outcome.ok, 'SN required');
       } else {
         app.device.ok();
-        _show(Tone.ok, _statusTitle(_order), code);
-        log(code, Outcome.ok, _statusTitle(_order));
+        _title = _statusTitle(_order);
       }
+      setState(() => _result = _Result.ok);
+      log(code, Outcome.ok, _title);
     } catch (e) {
       app.device.error();
-      _order = {};
-      _show(e is ApiException && e.kind == FailKind.unknown ? Tone.unknown : Tone.error, errorText(e), code);
+      setState(() {
+        _order = {};
+        _result = _Result.error;
+        _title = errorText(e);
+      });
       log(code, outcomeOf(e), errorText(e));
     }
   }
@@ -225,26 +227,31 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
     try {
       final r = Map.from(await app.api.command('GET', '/v0/p11yorders/scanItemSKUQC', params: {'id': _id, 'q': code}) as Map);
       _applySKU(r);
-      final progress = tr('ship.skuProgress', {'a': asInt(_order['skuQCScannedQty']), 'b': asInt(_order['skuQCRequiredQty'])});
+      final progress = 'SKU QC ${asInt(_order['skuQCScannedQty'])}/${asInt(_order['skuQCRequiredQty'])} scanned';
       log(code, Outcome.ok, progress);
+      app.device.ok();
       if (r['skuQCCompleted'] == true) {
         if (r['snRequired'] == true && r['snCompleted'] != true) {
-          app.device.ok();
+          _title = progress;
           await _openSNPrompt();
         } else {
           _mode = _Mode.none;
-          app.device.ok();
-          _show(Tone.ok, _statusTitle(_order), progress);
+          _title = _statusTitle(_order);
         }
       } else {
-        app.device.ok();
-        _show(Tone.warn, tr('ship.scanSKU', {'item': asStr(_order['skuQCCurrentItemID'])}), progress);
+        _title = progress;
       }
+      setState(() {});
     } catch (e) {
       app.device.error();
       log(code, outcomeOf(e), errorText(e));
       setState(() => _promptError = errorText(e));
-      if (e is ApiException && e.kind == FailKind.unknown) await _verifySKU();
+      if (isUnknown(e)) {
+        try {
+          _applySKU(await _skuProgress());
+          setState(() => _promptError = '${errorText(e)}\n${tr('pda.err.verified')}');
+        } catch (_) {}
+      }
     }
   }
 
@@ -254,49 +261,33 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
       final r = Map.from(await app.api.command('GET', '/v0/p11yorders/scanItemSN',
           params: {'id': _id, 'itemID': _currentSNItem, 'q': code}) as Map);
       _applySN(r);
-      final progress = tr('ship.snProgress', {'a': asInt(_order['snScannedQty']), 'b': asInt(_order['snRequiredQty'])});
+      final progress = 'SN ${asInt(_order['snScannedQty'])}/${asInt(_order['snRequiredQty'])} scanned';
       log(code, Outcome.ok, progress);
       app.device.ok();
       if (r['completed'] == true) {
         _mode = _Mode.none;
-        _show(Tone.ok, _statusTitle(_order), progress);
+        _title = _statusTitle(_order);
       } else {
-        _show(Tone.warn, tr('ship.scanSN', {'item': _currentSNItem}), progress);
+        _title = progress;
       }
+      setState(() {});
     } catch (e) {
       app.device.error();
       log(code, outcomeOf(e), errorText(e));
       setState(() => _promptError = errorText(e));
-      if (e is ApiException && e.kind == FailKind.unknown) await _verifySN();
+      if (isUnknown(e)) {
+        try {
+          _applySN(await _snProgress());
+          setState(() => _promptError = '${errorText(e)}\n${tr('pda.err.verified')}');
+        } catch (_) {}
+      }
     }
   }
 
-  /// After a timeout the scan may have been counted: re-read the progress instead of guessing.
-  Future<void> _verifySKU() async {
-    try {
-      _applySKU(await _skuProgress());
-      setState(() => _promptError = '${tr('err.unknownCheck')}\n'
-          '${tr('ship.skuProgress', {'a': asInt(_order['skuQCScannedQty']), 'b': asInt(_order['skuQCRequiredQty'])})}');
-    } catch (_) {}
-  }
-
-  Future<void> _verifySN() async {
-    try {
-      _applySN(await _snProgress());
-      setState(() => _promptError = '${tr('err.unknownCheck')}\n'
-          '${tr('ship.snProgress', {'a': asInt(_order['snScannedQty']), 'b': asInt(_order['snRequiredQty'])})}');
-    } catch (_) {}
-  }
-
-  void _leavePrompt() {
-    setState(() {
-      _mode = _Mode.none;
-      _promptError = '';
-      _tone = Tone.info;
-      _title = '';
-      _sub = '';
-    });
-  }
+  void _closePrompt() => setState(() {
+        _mode = _Mode.none;
+        _promptError = '';
+      });
 
   // ---------- UI ----------
 
@@ -311,82 +302,117 @@ class _ShippingScanPageState extends State<ShippingScanPage> with ScanPageMixin 
     final missing = bundleLines.where((b) => !sent.contains(b)).toList();
 
     return ScanScaffold(
-      title: tr('mod.shipping'),
-      prompt: _prompt,
+      title: tr('wms.shippingScan'),
+      placeholder: _placeholder,
       busy: busy,
       onManual: manualEntry,
       actions: [
-        if (_mode != _Mode.none)
-          IconButton(icon: const Icon(Icons.close), tooltip: tr('ship.cancelPrompt'), onPressed: _leavePrompt),
+        if (_mode != _Mode.none) IconButton(icon: const Icon(Icons.close), onPressed: _closePrompt),
       ],
       children: [
-        if (_title.isNotEmpty)
-          StatusCard(tone: _tone, title: _title, subtitle: _sub)
-        else
-          StatusCard(tone: Tone.info, title: tr('common.waitScan'), subtitle: tr('ship.scanShipment')),
-        if (_promptError.isNotEmpty)
-          StatusCard(tone: Tone.error, title: _promptError),
+        if (_mode == _Mode.skuQC) _skuPrompt(skuDone),
+        if (_mode == _Mode.sn) _snPrompt(snDone),
+        switch (_result) {
+          _Result.idle => const ElResult(type: ElType.info, title: 'Please Scan the Shipment No. or Order No.'),
+          _Result.notFound => ElResult(type: ElType.danger, title: 'Order Not Found', subTitle: '$_scanned\nPlease check the shipment number and try again.'),
+          _Result.attention => const ElResult(type: ElType.danger, title: 'Attention', subTitle: 'Please check the status of the order! Maybe canceled!'),
+          _Result.already => ElResult(type: ElType.warning, title: _title, subTitle: 'This order was scanned before!'),
+          _Result.error => ElResult(type: isUnknownTitle ? ElType.primary : ElType.danger, icon: Icons.help, title: _title, subTitle: _scanned),
+          _Result.ok => _mode == _Mode.none
+              ? ElResult(type: ElType.success, title: _title, subTitle: _statusSubtitle(o))
+              : const SizedBox.shrink(),
+        },
         if (o.isNotEmpty) ...[
-          if (asStr(o['noteInner']).isNotEmpty || asStr(o['noteImportant']).isNotEmpty)
-            StatusCard(
-              tone: Tone.warn,
-              title: tr('common.noteInner'),
-              subtitle: [asStr(o['noteImportant']), asStr(o['noteInner'])].where((s) => s.isNotEmpty).join('\n'),
+          if (asStr(o['noteImportant']).isNotEmpty) ElAlert(type: ElType.danger, title: asStr(o['noteImportant'])),
+          ElDescriptions(title: 'Order Info', items: [
+            (
+              'Already Scanned',
+              sent.isEmpty && missing.isEmpty
+                  ? null
+                  : Wrap(spacing: 4, runSpacing: 4, children: [
+                      for (final s in sent) ElTag(s, type: ElType.success),
+                      for (final m in missing) ElTag(m, type: ElType.danger),
+                    ])
             ),
-          InfoSection(rows: [
-            (tr('common.orderNo'), asStr(o['unid'])),
-            (tr('common.refNo'), asStr(o['originSN'])),
-            (tr('common.customer'), app.session.customerName(asStr(o['agentGUID']))),
-            (tr('common.carrier'), asStr(o['carrier'])),
-            (tr('common.consignee'), asStr(o['recName1'])),
-            (tr('common.country'), asStr(o['recCountry'])),
-            (tr('common.note'), asStr(o['note'])),
+            ('Order ID', asStr(o['unid'])),
+            ('Ref. No.', asStr(o['originSN'])),
+            ('Carrier', asStr(o['carrier'])),
+            ('Consignee', asStr(o['recName1'])),
+            ('Dst. Country', asStr(o['recCountry'])),
+            ('Items', items.map((i) => '${asStr(i['sku'])} * ${asStr(i['qty'])}').join('\n')),
+            ('Remark', asStr(o['note'])),
+            ('Private Remark', asStr(o['noteInner'])),
           ]),
-          if (items.isNotEmpty)
-            InfoSection(
-              title: tr('common.items'),
-              rows: [for (final it in items) (asStr(it['sku'] ?? it['itemId']), '× ${asStr(it['qty'])}')],
-            ),
-          if (sent.isNotEmpty || missing.isNotEmpty)
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${tr('ship.bundles')} ${sent.length}/${asInt(o['shipQty'])}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  Wrap(spacing: 6, runSpacing: 6, children: [
-                    for (final s in sent) _chip(s, const Color(0xFF2E7D32)),
-                    for (final m in missing) _chip('${tr('ship.missing')}: $m', const Color(0xFFC62828)),
-                  ]),
-                ]),
-              ),
-            ),
-          if (skuDone.isNotEmpty)
-            InfoSection(title: tr('ship.skuScanned'), rows: _grouped(skuDone, 'sku')),
-          if (snDone.isNotEmpty)
-            InfoSection(
-              title: tr('ship.snScanned'),
-              rows: [for (final s in snDone) (asStr(s['sku'] ?? s['itemID']), asStr(s['sn']))],
-            ),
         ],
       ],
     );
   }
 
-  List<(String, String)> _grouped(List<Map<String, dynamic>> rows, String key) {
-    final m = <String, int>{};
-    for (final r in rows) {
-      final k = asStr(r[key]);
-      m[k] = (m[k] ?? 0) + 1;
+  bool get isUnknownTitle => _title == tr('pda.err.unknown');
+
+  Widget _skuPrompt(List<Map<String, dynamic>> done) {
+    final grouped = <String, int>{};
+    for (final r in done) {
+      grouped[asStr(r['sku'])] = (grouped[asStr(r['sku'])] ?? 0) + 1;
     }
-    return [for (final e in m.entries) (e.key, '× ${e.value}')];
+    final req = asInt(_order['skuQCRequiredQty']);
+    final got = asInt(_order['skuQCScannedQty']);
+    return ElCard(
+      highlight: El.warning,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Scan SKU for QC', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: El.warning)),
+        const SizedBox(height: 6),
+        _kv('Current SKU', asStr(_order['skuQCCurrentItemID'])),
+        _kv('SKU QC Progress', '$got / $req'),
+        const SizedBox(height: 4),
+        ElProgress(value: req == 0 ? 0 : got / req, complete: req > 0 && got >= req),
+        if (_promptError.isNotEmpty) ElAlert(type: ElType.danger, title: _promptError, margin: const EdgeInsets.only(top: 6)),
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Press Enter after each SKU scan. Repeated scans of the same valid SKU count one piece each.',
+              style: TextStyle(fontSize: 12, color: El.textSecondary)),
+        ),
+        if (grouped.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          const Text('Scanned SKU QC', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Wrap(spacing: 4, runSpacing: 4, children: [for (final e in grouped.entries) ElTag('${e.key} × ${e.value}', type: ElType.success)]),
+        ],
+      ]),
+    );
   }
 
-  Widget _chip(String text, Color c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: c.withValues(alpha: 0.1), border: Border.all(color: c), borderRadius: BorderRadius.circular(4)),
-        child: Text(text, style: TextStyle(color: c, fontSize: 13)),
+  Widget _snPrompt(List<Map<String, dynamic>> done) {
+    final req = asInt(_order['snRequiredQty']);
+    final got = asInt(_order['snScannedQty']);
+    return ElCard(
+      highlight: El.warning,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Please Scan Item SN', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: El.warning)),
+        const SizedBox(height: 6),
+        _kv('Current ItemID', _currentSNItem),
+        _kv('Serial Scan Progress', '$got / $req'),
+        const SizedBox(height: 4),
+        ElProgress(value: req == 0 ? 0 : got / req, complete: req > 0 && got >= req),
+        if (_promptError.isNotEmpty) ElAlert(type: ElType.danger, title: _promptError, margin: const EdgeInsets.only(top: 6)),
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Press Enter after scanning. The prompt will close automatically when all required SNs are completed.',
+              style: TextStyle(fontSize: 12, color: El.textSecondary)),
+        ),
+        if (done.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          const Text('Scanned Serial Numbers', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          for (final s in done) Text('${asStr(s['sku'])}: ${asStr(s['sn'])}', style: const TextStyle(fontSize: 13)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Row(children: [
+          SizedBox(width: 130, child: Text(k, style: const TextStyle(color: El.textSecondary, fontSize: 13))),
+          Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+        ]),
       );
 }

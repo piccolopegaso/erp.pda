@@ -1,68 +1,88 @@
-# MIC 仓库 PDA（Flutter）
+# MICLinker PDA（Flutter）
 
-MICLinker 海外仓的 PDA 原生 App，从 0 开始重写，不再在 Chrome 里运行 erp.webapp。
+MICLinker 海外仓的原生 PDA App，直接调用现有 Go 后端（`/v0/*`）和 CarrierGate。**后端不需要任何改动。**
 
-- 支持 **Android 5.0+**（minSdk 21），已在 **Android 6.0 (API 23)** 模拟器上做过端到端测试
-- 只打包 armeabi-v7a 和 arm64-v8a，release APK 约 16 MB
-- 界面支持中文、English、Deutsch
+- 目标设备：**iData 95W（Android 6.0）**，支持 Android 5.0+（minSdk 21），只打包 armeabi-v7a 和 arm64-v8a
+- 界面、菜单名、提示语与 erp.webapp 保持一致（Element UI 风格），**默认英文**，可切换中文和德语
+- 翻译直接取自 `erp.webapp/src/locale`（见 `tool/sync_web_locale.py`），与网页端用词完全一致
 
-## 模块
+## 模块（与网页端菜单同名）
 
-| 模块 | 对应 Web 页面 | 后端接口 |
+| 模块 | 对应网页端 | 说明 |
 |---|---|---|
-| 出库扫描（复核 / SKU 质检 / SN） | `warehouse/shippingScan.vue` | `p11yorders/scanShipSN`、`scanItemSKUQC`、`scanItemSN` |
-| 装车交接（托盘 / 车牌 → 跟踪号） | `wms/palletHandover.vue` | `wms/pallets/handover/scan`、`{code}/tracking[/flush\|/remove]` |
-| 拣货List（只读，按库位顺序核对） | `warehouse/picklist` + `packScanBatch` | `p11y/pick/any`、`p11y/pick/` |
-| 扫描登记 | `warehouse/loggingScan.vue` | `p11yorders/scanLog`、`r7gorders/scanLog` |
-| 收货/退货 | `warehouse/receivingScan.vue` | `r7greceiving/scan`、`r7greceiving/` |
-| SN 换标 + 远程打印 | `warehouse/snScan.vue` | `p11yorders/swapSN` + socket.io `print` |
-| 库存查询（库位 / 商品 / 批次） | `wms/inventory`、`wms/compartment` | `compartment/any`、`item/any`、`inventory/list` |
-| 扫描记录（本机） | — | — |
-| 设置（扫描头 / 声音 / 网络 / 语言） | — | — |
+| **Picklist** | Picklist / Picking Scan / Pack Scan Order | 列出待处理拣料单，扫码或点选进入：<br>• 类型 100 → **Pick Scan Batch**（= `packScanBatch.vue`）<br>• 类型 1 → **Pack Scan Order**（= `packScan.vue`） |
+| **Shipping Scan** | shippingScan.vue | 出库复核，SKU QC，SN |
+| **Loading Scan** | palletHandover.vue | 扫车牌或托盘码，再扫跟踪号；断网时先存在本机，恢复后自动提交 |
+| **Logging Scan** | loggingScan.vue | |
+| **SN Scan** | snScan.vue | 每个码扫两次确认，新 SN 通过 socket.io 发到打印站 |
+| **RMA** | RMA（received.vue） | 扫退货包裹，新建或打开 RMA，扫商品，拍照，然后入库 |
+| **Inventory** | Inventory / Compartment | 扫库位、商品或批次，只读查询 |
+| Scan History / Settings | — | PDA 专用 |
 
-### 没有做进 PDA 的部分
+已移除：未完工的 Receiving Scan，以及上一版的只读「拣货指引」。
 
-- **盘点 v2**：后端现在报 `Error 1054 (42S22) Unknown column`，说明生产库的表结构和 stocktakev2 代码不一致，属于后端或数据库迁移问题。前端重写解决不了，需要先修好后端。
-- **交接签字**：Web 端的流程是上传签字后的 PDF，属于办公桌上的操作。
-- **拣货回写 / 打包**：picklist 用的是整对象 `PUT`，在手持端回写风险太高，所以拣货指引只做现场核对，打包仍在打包台完成。
-- **一键强制出库**（`oms.orders.requestShipOut` 动态表单）：属于管理操作，没有放进 PDA。
+### Picklist（会真实改变拣料单状态）
 
-## 关键设计
+与网页端写入的数据完全一致：
 
-### 1. 服务器要求 `Origin` 请求头
-Go 后端的 `accessControl` 会拒绝不带白名单 Origin 的请求（返回 HTTP 400），而原生 App 默认不带 Origin。
-App 默认发送 `Origin: https://miclinker.com`（可在「设置 → Origin」中修改）。如果换了部署域名，记得同步修改。
+1. 扫商品 → 输入数量和包装材料（Pick Scan Batch），或按订单扫齐商品（Pack Scan Order）
+2. 向 CarrierGate 申请面单：
+   - Batch：`batchPrintLabel`
+   - Order：`printShipmentLabelAtScan`，接口地址从 Mask `oms.outbound.list` 读取
+3. `PUT /v0/p11y/pick/`，回写 `itemInfo.qtyPrinted`、`itemQtyPicked`、`printBatch` / `ordersFin`
+   - 后端在全部拣完时自动把状态改为 **Packing Completed（20）**
+4. 下载面单 PDF，发送到打印站的 **PrintBridge**
 
-### 2. 弱网 / 断网
-- 很多扫描接口**不是幂等的**：每扫一次，服务器就加 1。所以 App 只在**能确定请求没有发出去**时自动重试（连接失败、DNS 失败、连接被拒绝）。
-- 如果超时，服务器可能已经处理了，也可能没有。这时界面显示紫色的「结果未知」卡片，并自动重新读取进度（SKU 质检 / SN / 退货单），**不会**盲目重发。
-- 装车扫描会先写入**本机持久化队列**（按托盘分开保存），再逐条提交：
-  - 断网时，扫描内容保存在本机，恢复网络后自动提交。
-  - 提交前会先拉取服务器上的列表并去重，避免重复提交。
-  - 遇到业务错误（例如 `TrackingConflictError`）时队列暂停，操作员可以选择重试或删除这一条，和 Web 端的逻辑一致。
-- 拣货指引在拣货单加载后可以离线使用，条码和 SKU 的对应关系也缓存在本机。
-- 登录过期时，在当前页面弹出重新登录的对话框，正在进行的任务不会丢。
+完成后页面显示「Well Done」和 **Next Picklist** 按钮。
 
-### 3. 扫描头
-- **广播模式**（推荐）：默认「自动」，同时监听优博讯、Honeywell、Zebra DataWedge、iData、东集、新大陆、成为、商米和通用格式的广播。也可以在设置里填写自定义的 Action 和 Extra 键。
-- **键盘模式**：扫描头模拟键盘输入并以回车结尾，同样支持。
-- 300ms 内重复扫到同一个码会被忽略（防抖）。扫描只会送到当前可见的页面。
-- 「设置」页最上方有扫描测试区，可以直接检查扫描头是否已接通。
-- 成功、提醒、错误分别用不同的提示音（ToneGenerator）和震动区分，不依赖任何音频插件。
+Pick Scan Batch 的面单索引（`lblIdx`）计算逻辑，已用网页端原始 JS 做过 500 组随机数据的差分测试，结果一致。
+
+**必须先配置打印站**，否则不会申请面单：设置 → Print station → 填入装有 PrintBridge 的电脑 IP（默认端口 9100），再从列表中选择打印机。PrintBridge 即 `~/projects/PrintBridge`，网页端「DHL Printer」用的也是它。
+
+Pack Scan Order 中这些操作仍需在电脑端完成：没有运单的订单「Request Shipment Label」，以及 ADR / CMR / 报关单打印。PDA 上会给出提示。
+
+### RMA（替代未完工的 Receiving Scan）
+
+1. 扫包裹单号
+   - 已存在 RMA 的 → 直接打开
+   - 不存在的 → 新建，并按原订单自动带出 Reference No. 和客户
+2. 扫商品（自动累加数量），设置每行状态（Valid / Damaged / Invalid / Unchecked / Scrapped）、类型、包裹状态、备注，可以拍照
+3. 保存（新建用 `POST`，修改用 `PUT /v0/r7greceiving/`）
+4. **Inbound**：扫一个库位会填给所有未设置库位的行；先点选某一行再扫库位，则只设置该行
+   - 确认后调用 `POST /v0/r7greceiving/inbound`，后端入库并把状态改为 Inbounded（100）
+   - 如果超时，会先回读该 RMA 的状态再决定是否需要重试，**绝不盲目重发入库请求**
+
+## iData 95W 扫描头设置
+
+推荐使用**广播模式**：系统「扫描设置 / iScan」→ 输出方式选「广播」。
+
+- 默认 Action 是 `android.intent.action.SCANRESULT`，Extra 是 `value`
+- App 的「自动」模式已包含这个配置，无需修改
+- 也可以用「键盘模式」，但需要在扫描设置里开启回车后缀
+
+App 的「设置」页最上方有扫描测试区，扫任意条码即可确认扫描头已接通。
+
+95W 有实体数字键盘：键盘模式下只有快速连续输入且不少于 3 个字符的内容才会被当作扫描，手动按数字键不会误触发。
+
+## 弱网设计（与上一版相同）
+
+- 扫描类接口多数**不是幂等的**，只在确认请求没有发出去时才自动重试
+- 超时时界面显示「结果未知」，并回读服务器数据核对
+- 拣料单和 RMA 的 `PUT` 写入的是绝对值，可以安全重发
+- Loading Scan 的扫描先进入本机持久化队列，断网后恢复会自动提交
+- 登录过期时在当前页弹出重新登录对话框，正在进行的任务不会丢
 
 ## 构建
 
-**必须使用 Flutter 3.32.x。** Flutter 3.35 及以后的版本只能构建 Android 7.0+（API 24）的 APK。
+**必须使用 Flutter 3.32.x。** Flutter 3.35 及以后的版本只能构建 Android 7.0+ 的 APK。
 
 ```bash
 ~/fvm/versions/3.32.8/bin/flutter build apk --release --target-platform android-arm,android-arm64
 ```
 
-生成的文件在 `build/app/outputs/flutter-apk/app-release.apk`。
+版本号在 `pubspec.yaml`（当前为 `0.0.2+2`）和 `lib/pages/settings_page.dart` 的 `appVersion` 中，修改时两处要一致。
 
-### 签名密钥（重要）
-`android/key.properties` 和 `android/app/mic-pda-release.jks` 已加入 `.gitignore`。**请把这两个文件备份到安全的地方。**
-以后每次升级 App，都必须用同一个密钥签名，否则 PDA 上无法覆盖安装。
+签名使用 `android/key.properties` 和 `android/app/mic-pda-release.jks`，两者已加入 `.gitignore`，**请务必备份**。之后的每次升级都必须用同一个密钥签名，否则无法覆盖安装。
 
 ## 测试
 
@@ -70,34 +90,44 @@ App 默认发送 `Origin: https://miclinker.com`（可在「设置 → Origin」
 ~/fvm/versions/3.32.8/bin/flutter test
 ```
 
-单元测试覆盖：
-- 响应包解析（`code` / `data`）
-- 各类失败的分类（不该重试的请求不重试）
-- 403 时触发重新登录
+共 16 项，覆盖：
+- 失败分类（不该重试的不重试）
 - 扫描分发和防抖
 - 三种语言的翻译是否齐全
+- 网页端用词
+- Pick Scan Batch 与网页端 JS 的差分测试（需要 node）
+- composeCarrierConfig
 
-### 本地模拟后端（端到端测试，不碰生产数据）
+修改过网页端 key 后，需要先运行 `python3 tool/sync_web_locale.py` 更新翻译。
+
+### 本地模拟后端（不碰生产数据）
 
 ```bash
 ~/fvm/versions/3.32.8/bin/dart run tool/mock_server.dart 8787
 ```
 
-- 模拟器里把服务器地址填成 `http://10.0.2.2:8787`。
-- 模拟账号：`pda@mock.local` / `mock-pass`，验证码 `1234`。
+- 同时启动 API 和 CarrierGate（:8787），以及 PrintBridge 模拟（:9100）
+- 模拟器设置：
+  - 服务器填 `http://10.0.2.2:8787`
+  - 打印站填 `10.0.2.2`
+- 模拟账号：`pda@mock.local` / `mock-pass`，验证码 `1234`
+- 测试数据：
+  - 拣料单 `PL20260001`（Batch）、`PL20260002`（Order）
+  - RMA `RET0001`
+  - 托盘 `LD20260001`
+  - 库位 `A-01-01`
+  - 商品条码 `4006381333931` / `4006381333948` / `6970000000011`
 - 弱网模拟：
-  - `GET /__mock/delay?ms=30000`：所有响应延迟 30 秒（制造超时）
-  - `GET /__mock/offline?sec=20`：20 秒内拒绝所有连接（模拟信号死角）
-- 用 adb 模拟扫描头广播：
+  - `GET /__mock/delay?ms=30000`：所有响应延迟（制造超时）
+  - `GET /__mock/offline?sec=20`：一段时间内拒绝所有连接（模拟信号死角）
+- 用 adb 模拟 iData 扫描：
 
 ```bash
-adb shell am broadcast -a android.intent.ACTION_DECODE_DATA --es barcode_string TRK1001
+adb shell am broadcast -a android.intent.action.SCANRESULT --es value PL20260001
 ```
 
-## 部署到 PDA
+## 部署
 
-1. 把 APK 拷贝到 PDA 上安装，或者用 `adb install release/MIC-PDA-1.0.0.apk` 安装。
-2. 首次登录需要输入验证码，之后这台设备会被信任（eid），不再需要验证码。
-3. 打开「设置」，扫任意条码，确认扫描头已接通。如果没有反应：
-   - 在 PDA 系统的扫描设置里把输出方式改为「广播」，或者
-   - 在 App 里填写该机型的自定义 Action 和 Extra 键。
+1. 用 `adb install -r release/MIC-PDA-0.0.2.apk` 安装，或把 APK 拷贝到 PDA 上安装。签名与上一版相同，可以直接覆盖升级。
+2. 首次登录需要验证码，之后这台设备会被信任（eid），不再需要验证码。
+3. 在「设置」中配置打印站，并扫码确认扫描头可用。

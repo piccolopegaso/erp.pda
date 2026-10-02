@@ -153,16 +153,54 @@ final pallets = {
 final palletTracking = <String, List<Map<String, dynamic>>>{'LD20260001': []};
 
 // ---------------- picklists ----------------
-final picklists = {
+final picklists = <String, Map<String, dynamic>>{
+  // Pack Scan Batch (type 100): single-item orders, label per piece
   'PL20260001': {
-    'id': 301, 'unid': 'PL20260001', 'type': 100, 'status': 50, 'itemQty': 6, 'itemQtyPicked': 0,
+    'id': 301, 'unid': 'PL20260001', 'type': 100, 'status': 1, 'itemQty': 3, 'itemQtyPicked': 0, 'priority': 3,
+    'carrier': 'DHL', 'shipQty': 3, 'agentGUID': 'C001', 'createdAt': '2026-10-02T06:00:00Z', 'orderUNID': ['MO1', 'MO2', 'MO3'],
+    'orderIds': ['501', '502', '503'], 'itemInfo': '', 'printBatch': '', 'ordersFin': '',
     'items': jsonEncode([
-      {'sku': 'SKU-A', 'itemName': 'Power Bank 20000mAh', 'itemBatch': 'B2410', 'qty': 2, 'inventoryName': 'B-10-01'},
       {'sku': 'SKU-B', 'itemName': 'USB-C Cable 1m', 'itemBatch': '', 'qty': 3, 'inventoryName': 'A-01-01'},
-      {'sku': 'SKU-C', 'itemName': 'Portable Station', 'itemBatch': '', 'qty': 1, 'inventoryName': 'A-02-03'},
     ]),
+    'orders': jsonEncode([
+      {'ID': 501, 'UNID': 'MO2026B01', 'items': [{'sku': 'SKU-B', 'qty': 1}], 'recCountry': 'DE', 'shipSN': 'TRKB01'},
+      {'ID': 502, 'UNID': 'MO2026B02', 'items': [{'sku': 'SKU-B', 'qty': 1}], 'recCountry': 'DE', 'shipSN': 'TRKB02'},
+      {'ID': 503, 'UNID': 'MO2026B03', 'items': [{'sku': 'SKU-B', 'qty': 1}], 'recCountry': 'AT', 'shipSN': 'TRKB03'},
+    ]),
+    'itemOrders': jsonEncode({'SKU-B': [501, 502, 503]}),
+  },
+  // Pack Scan Order (type 1): multi-item orders, label per order; SKU-C needs the batch number
+  'PL20260002': {
+    'id': 302, 'unid': 'PL20260002', 'type': 1, 'status': 1, 'itemQty': 5, 'itemQtyPicked': 0, 'priority': 0,
+    'carrier': 'UPS', 'shipQty': 3, 'agentGUID': 'C001', 'createdAt': '2026-10-02T07:00:00Z', 'orderUNID': ['MO4', 'MO5', 'MO6'],
+    'orderIds': ['601', '602', '603'], 'itemInfo': '', 'printBatch': '', 'ordersFin': '',
+    'items': jsonEncode([
+      {'sku': 'SKU-A', 'itemName': 'Power Bank 20000mAh', 'itemBatch': '', 'qty': 3, 'inventoryName': 'B-10-01'},
+      {'sku': 'SKU-B', 'itemName': 'USB-C Cable 1m', 'itemBatch': '', 'qty': 1, 'inventoryName': 'A-01-01'},
+      {'sku': 'SKU-C', 'itemName': 'Portable Station', 'itemBatch': 'B2409', 'qty': 1, 'inventoryName': 'A-02-03'},
+    ]),
+    'orders': jsonEncode([
+      {'ID': 601, 'UNID': 'MO2026O01', 'carrier': 'UPS', 'recCountry': 'DE', 'shipSN': 'TRKO01', 'items': [{'sku': 'SKU-A', 'qty': 1}, {'sku': 'SKU-B', 'qty': 1}]},
+      {'ID': 602, 'UNID': 'MO2026O02', 'carrier': 'UPS', 'recCountry': 'DE', 'shipSN': 'TRKO02', 'items': [{'sku': 'SKU-A', 'qty': 2}]},
+      {'ID': 603, 'UNID': 'MO2026O03', 'carrier': 'UPS', 'recCountry': 'FR', 'shipSN': '', 'items': [{'sku': 'SKU-C', 'qty': 1, 'itemBatch': 'B2409'}]},
+    ]),
+    'itemOrders': jsonEncode({'SKU-A': [601, 602], 'SKU-B': [601], 'SKU-C|||B2409': [603]}),
   },
 };
+final orderStatus = <int, int>{601: 10, 602: 10, 603: 10, 501: 10, 502: 10, 503: 10};
+final printJobs = <String>[];
+final uploads = <String, List<int>>{};
+const tinyPdf = '%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 288 432]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF';
+
+// RMA records (r7g receiving)
+final rmas = <int, Map<String, dynamic>>{
+  401: {
+    'id': 401, 'shipSN': 'RET0001', 'originSN': 'MO20260001', 'originShipSN': 'TRK1001', 'agentGUID': 'C001', 'businessType': 2,
+    'type': 1, 'status': 0, 'note': '', 'items': jsonEncode([{'itemId': 'SKU-A', 'itemBatch': '', 'qty': 1, 'valid': 1, 'remark': ''}]),
+    'image': '', 'createdAt': '2026-10-01T09:00:00Z',
+  },
+};
+int rmaSeq = 401;
 
 // =====================================================================
 
@@ -178,6 +216,29 @@ Future<void> listen() async {
 Future<void> main(List<String> args) async {
   port = args.isNotEmpty ? int.parse(args.first) : 8787;
   await listen();
+  await printBridge();
+}
+
+/// PrintBridge mock (~/projects/PrintBridge): GET /printers, POST / {printer, data(base64 pdf), id}
+Future<void> printBridge() async {
+  final s = await HttpServer.bind(InternetAddress.anyIPv4, 9100);
+  stdout.writeln('PrintBridge mock on :9100');
+  s.listen((req) async {
+    req.response.headers.contentType = ContentType.json;
+    if (req.uri.path == '/printers') {
+      req.response.write(jsonEncode({'printers': ['Zebra-ZD420 (Packing 1)', 'HP LaserJet']}));
+    } else if (req.method == 'POST') {
+      final b = jsonDecode(await utf8.decoder.bind(req).join()) as Map;
+      final pdf = utf8.decode(base64Decode(b['data'] as String), allowMalformed: true);
+      final job = 'printer=${b['printer']} id=${b['id']} pdf=${pdf.startsWith('%PDF') ? 'ok' : 'INVALID'}';
+      printJobs.add(job);
+      stdout.writeln('  PRINT $job');
+      req.response.write(jsonEncode({'status': 'success', 'id': b['id']}));
+    } else {
+      req.response.write(jsonEncode({'status': 'running', 'service': 'PrintBridge'}));
+    }
+    await req.response.close();
+  });
 }
 
 Future<void> handle(HttpRequest req) async {
@@ -201,6 +262,34 @@ Future<void> handle(HttpRequest req) async {
 
   if (path.startsWith('/ws')) return handleWs(req);
 
+  // CarrierGate mock: returns a label PDF URL like the real batchPrintLabel
+  if (path == '/cg/v0/order/batchPrintLabel' || path == '/v0/order/batchPrintLabel') {
+    if (delayMs > 0) await Future.delayed(Duration(milliseconds: delayMs));
+    final rows = jsonDecode(await utf8.decoder.bind(req).join()) as List;
+    stdout.writeln('  CG batchPrintLabel ${jsonEncode(rows)}');
+    final ids = rows.map((r) => r['id']).toList();
+    if (ids.any((i) => orderStatus[i] == 120)) return send(req, {'code': 'OK', 'data': 'http://${req.headers.host}:$port/labels/merged.pdf?files=[]'});
+    for (final i in ids) {
+      if (orderStatus[i] != null && orderStatus[i]! < 20) orderStatus[i] = 20;
+    }
+    return send(req, {'code': 'OK', 'data': 'http://${req.headers.host}:$port/labels/merged.pdf?files=[${ids.join(',')}]'});
+  }
+  if (path.startsWith('/labels/')) {
+    req.response.headers.contentType = ContentType('application', 'pdf');
+    req.response.add(utf8.encode(tinyPdf));
+    return req.response.close();
+  }
+  if (path.startsWith('/v0/static/')) {
+    final b = uploads[path.substring('/v0/static/'.length)];
+    if (b == null) {
+      req.response.statusCode = 404;
+      return req.response.close();
+    }
+    req.response.headers.contentType = ContentType('image', 'jpeg');
+    req.response.add(b);
+    return req.response.close();
+  }
+
   // accessControl: Origin must be allow-listed
   final origin = req.headers.value('origin');
   final host = origin == null ? null : Uri.tryParse(origin)?.authority;
@@ -211,7 +300,8 @@ Future<void> handle(HttpRequest req) async {
 
   if (delayMs > 0) await Future.delayed(Duration(milliseconds: delayMs));
 
-  final body = req.method == 'GET' ? null : await utf8.decoder.bind(req).join();
+  final isUpload = path == '/v0/statics/upload/image';
+  final body = req.method == 'GET' || isUpload ? null : await utf8.decoder.bind(req).join();
   final json = (body == null || body.isEmpty) ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
 
   // ---- public ----
@@ -250,8 +340,6 @@ Future<void> handle(HttpRequest req) async {
       return ok(req, customers);
     case '/v0/settings/config':
       return ok(req, {'B2C': 1, 'RMA': 2, 'Repair': 3});
-    case '/v0/masken/':
-      return ok(req, {'mask': jsonEncode([{'type': 'printSN'}])});
 
     // ---------- outbound ----------
     case '/v0/p11yorders/scanShipSN':
@@ -355,7 +443,20 @@ Future<void> handle(HttpRequest req) async {
       r['items'] = jsonEncode(list);
       return ok(req, r);
     case '/v0/r7greceiving/':
-      final r = receivings[int.tryParse(q['q'] ?? '') ?? 0];
+      if (req.method == 'POST') {
+        if (rmas.values.any((r) => r['shipSN'] == json['shipSN'])) return fail(req, 'InternalError', "Error 1062 (23000): Duplicate entry '${json['shipSN']}' for key 'ShipSN'");
+        final id = ++rmaSeq;
+        rmas[id] = {...json, 'id': id, 'status': 0, 'createdAt': DateTime.now().toUtc().toIso8601String()};
+        return ok(req, null);
+      }
+      if (req.method == 'PUT') {
+        final r = rmas[json['id']];
+        if (r == null) return fail(req, 'NotFoundError', 'NotFoundError');
+        r.addAll(json);
+        return ok(req, null);
+      }
+      final id = int.tryParse(q['q'] ?? '') ?? 0;
+      final r = rmas[id] ?? receivings[id];
       return r == null ? fail(req, 'NotFoundError', 'NotFoundError') : ok(req, r);
     case '/v0/r7gorders/scanLog':
       return ok(req, {'id': 0, 'unid': ''});
@@ -383,9 +484,84 @@ Future<void> handle(HttpRequest req) async {
       final p = picklists[q['q']];
       return p == null ? fail(req, 'NotFoundError', 'NotFoundError') : ok(req, {'id': p['id'], 'type': p['type'], 'unid': p['unid']});
     case '/v0/p11y/pick/':
+      if (req.method == 'PUT') {
+        final p = picklists.values.firstWhere((x) => x['id'] == json['id'], orElse: () => {});
+        if (p.isEmpty) return fail(req, 'NotFoundError', 'NotFoundError');
+        p.addAll(json);
+        // service.updateAffected: all picked -> 20 Packing Completed
+        if ((p['status'] as int) < 20 && (p['itemQtyPicked'] as int) != 0 && (p['itemQty'] as int) <= (p['itemQtyPicked'] as int)) p['status'] = 20;
+        return ok(req, null);
+      }
       final p = picklists.values.firstWhere((x) => '${x['id']}' == q['q'], orElse: () => {});
       return p.isEmpty ? fail(req, 'NotFoundError', 'NotFoundError') : ok(req, p);
+    case '/v0/p11y/pick/list':
+      final st = req.uri.queryParametersAll['Status[]']?.map(int.parse).toSet();
+      final rows = picklists.values.where((p) => st == null || st.contains(p['status'])).toList();
+      return ok(req, {'total': rows.length, 'page': 1, 'next': 0, 'data': rows});
+    case '/v0/masken/':
+      if (q['q'] == 'oms.outbound.list') {
+        return ok(req, {'mask': jsonEncode({'printShipmentLabelAtScan': {'api': 'http://${req.headers.host}:$port/cg/v0/order/batchPrintLabel', 'method': 'post', 'constant': {'baseUrl': 'https://courrierhub.com'}}})});
+      }
+      return ok(req, {'mask': jsonEncode([{'type': 'printSN'}])});
+    case '/v0/item/opts':
+      return ok(req, {'1': {'unid': 'BOX-S', 'name': 'Box S'}, '2': {'unid': 'BOX-M', 'name': 'Box M'}, '3': {'unid': 'BAG-L', 'name': 'Bag L'}});
+    case '/v0/lookup/kct':
+      return ok(req, q['k'] == 'SKU-A:2:DE' ? {'packServices': ['BOX-M']} : null);
+    case '/v0/lookup/':
+      return ok(req, null);
+    case '/v0/p11yorders/':
+      final id = int.tryParse(q['q'] ?? '') ?? 0;
+      return ok(req, {'id': id, 'status': orderStatus[id] ?? 10});
+    case '/v0/p11yorders/outOfStock':
+      orderStatus[int.parse(q['q']!)] = 8;
+      return ok(req, null);
+    case '/v0/p11yorders/list':
+      final s = (q['q'] ?? '').toUpperCase();
+      final rows = orders.values.where((o) => '${o['unid']}'.toUpperCase() == s || '${o['shipBundle']}'.toUpperCase().split('\n').contains(s)).toList();
+      return ok(req, {'total': rows.length, 'next': 0, 'data': rows});
 
+    // ---------- RMA ----------
+    case '/v0/r7greceiving/list':
+      final s = (q['q'] ?? '').toUpperCase();
+      final st = req.uri.queryParametersAll['Status[]']?.map(int.parse).toSet();
+      final rows = rmas.values.where((r) {
+        if (st != null && !st.contains(r['status'])) return false;
+        return s.isEmpty || '${r['shipSN']}'.toUpperCase().contains(s) || '${r['originSN']}'.toUpperCase().contains(s);
+      }).toList()
+        ..sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
+      return ok(req, {'total': rows.length, 'next': rows.isEmpty ? 0 : rows.last['id'], 'data': rows});
+    case '/v0/r7greceiving/inbound':
+      final r = rmas[json['id']];
+      if (r == null) return fail(req, 'InternalError', 'receiving not found');
+      final its = (jsonDecode(json['items'] as String) as List).cast<Map>();
+      for (final i in its) {
+        if ('${i['compartmentGUID']}'.isEmpty) return fail(req, 'InternalError', 'compartment not found');
+      }
+      r['items'] = jsonEncode(its);
+      r['status'] = 100;
+      r['finDate'] = DateTime.now().toUtc().toIso8601String();
+      return ok(req, null);
+    case '/v0/statics/upload/image':
+      final raw = await req.fold<List<int>>([], (a, b) => a..addAll(b));
+      // keep only the JPEG inside the multipart body (SOI .. EOI)
+      var s = 0, e = raw.length;
+      for (var i = 0; i + 1 < raw.length; i++) {
+        if (raw[i] == 0xFF && raw[i + 1] == 0xD8) {
+          s = i;
+          break;
+        }
+      }
+      for (var i = raw.length - 2; i > s; i--) {
+        if (raw[i] == 0xFF && raw[i + 1] == 0xD9) {
+          e = i + 2;
+          break;
+        }
+      }
+      final bytes = raw.sublist(s, e);
+      final id = 'img${DateTime.now().millisecondsSinceEpoch}';
+      uploads[id] = bytes;
+      stdout.writeln('  upload $id ${bytes.length} bytes');
+      return ok(req, 'local:/v0/static/$id');
     // ---------- pallets ----------
     case '/v0/wms/pallets/handover/scan':
       final scan = '${json['scan']}'.trim().toUpperCase();

@@ -5,6 +5,7 @@ import '../core/i18n.dart';
 import '../ui/login_form.dart';
 import '../ui/widgets.dart';
 import 'home_page.dart';
+import '../ui/el.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -18,7 +19,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _editServer() async {
     final s = AppScope.of(context).settings;
-    final v = await askCode(context, title: tr('login.server'), initial: s.server);
+    final v = await askCode(context, title: tr('pda.set.server'), initial: s.server);
     if (v != null && v.isNotEmpty && v != s.server) {
       s.server = v;
       setState(() => _formKey++); // new captcha from the new server
@@ -30,7 +31,7 @@ class _LoginPageState extends State<LoginPage> {
     final s = AppScope.of(context).settings;
     return ListenableBuilder(listenable: s, builder: (context, _) => Scaffold(
       appBar: AppBar(
-        title: Text(tr('app.title')),
+        title: Text('MICLinker PDA'),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.language),
@@ -47,9 +48,9 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.all(20),
           children: [
             const SizedBox(height: 8),
-            const Icon(Icons.warehouse_rounded, size: 64, color: Color(0xFF1565C0)),
+            const Icon(Icons.warehouse_rounded, size: 64, color: El.primary),
             const SizedBox(height: 8),
-            Center(child: Text(tr('login.title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+            Center(child: Text(tr('common.login'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
             const SizedBox(height: 20),
             LoginForm(
               key: ValueKey(_formKey),
@@ -61,7 +62,7 @@ class _LoginPageState extends State<LoginPage> {
             ListTile(
               dense: true,
               leading: const Icon(Icons.dns),
-              title: Text(tr('login.server')),
+              title: Text(tr('pda.set.server')),
               subtitle: Text(s.server),
               onTap: _editServer,
             ),

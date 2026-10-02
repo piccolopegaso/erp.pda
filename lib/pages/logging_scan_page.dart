@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../core/api.dart';
 import '../core/history.dart';
 import '../core/i18n.dart';
+import '../ui/el.dart';
 import '../ui/widgets.dart';
 
-/// Logging scan (web: views/warehouse/loggingScan.vue).
+enum _R { idle, task, got, already, invalid, error }
+
+/// Logging Scan (web: views/warehouse/loggingScan.vue).
 /// First scan selects the task (outbound order, or inbound order for "MI…" numbers),
 /// following scans log labels/parcels against it.
 class LoggingScanPage extends StatefulWidget {
@@ -17,13 +19,13 @@ class LoggingScanPage extends StatefulWidget {
 
 class _LoggingScanPageState extends State<LoggingScanPage> with ScanPageMixin {
   @override
-  String get moduleName => 'mod.logging';
+  String get moduleName => 'wms.loggingScan';
 
   Map<String, dynamic> _task = {};
   bool _inbound = false;
-  Tone _tone = Tone.info;
-  String _title = '';
-  String _sub = '';
+  _R _r = _R.idle;
+  String _code = '';
+  String _err = '';
 
   int get _id => asInt(_task['id']);
 
@@ -37,16 +39,13 @@ class _LoggingScanPageState extends State<LoggingScanPage> with ScanPageMixin {
     final inbound = _id == 0 ? _isInboundNo(code) : _inbound;
     if (_isInboundNo(code)) code = code.replaceFirst(RegExp(r'P\d{3}$'), '');
     final before = _sentOf(_task);
+    _code = code;
     try {
-      final data = await app.api.command(
-        'GET',
-        inbound ? '/v0/r7gorders/scanLog' : '/v0/p11yorders/scanLog',
-        params: {'id': _id, 'q': code},
-      );
+      final data = await app.api.command('GET', inbound ? '/v0/r7gorders/scanLog' : '/v0/p11yorders/scanLog', params: {'id': _id, 'q': code});
       if (data is! Map || asStr(data['unid']).isEmpty) {
         app.device.error();
-        _show(Tone.error, tr('common.notFound', {'code': raw}));
-        log(raw, Outcome.error, 'not found');
+        setState(() => _r = _R.invalid);
+        log(raw, Outcome.error, 'Invalid');
         return;
       }
       final first = _id == 0;
@@ -54,40 +53,35 @@ class _LoggingScanPageState extends State<LoggingScanPage> with ScanPageMixin {
       if (first) {
         _inbound = inbound;
         app.device.ok();
-        _show(Tone.ok, tr(inbound ? 'log.inbound' : 'log.task', {'unid': asStr(_task['unid'])}), tr('log.scanToLog'));
+        setState(() => _r = _R.task);
         log(raw, Outcome.ok, asStr(_task['unid']));
         return;
       }
-      final after = _sentOf(_task);
-      final already = !inbound && after.length <= before.length && before.contains(code);
+      // the web compares updatedAt with the device clock; comparing the logged list is clock-independent
+      final already = !inbound && _sentOf(_task).length <= before.length && before.contains(code);
       if (already) {
-        app.device.warn();
-        _show(Tone.warn, tr('log.already', {'code': code}));
-        log(raw, Outcome.warn, 'already');
+        app.device.error();
+        setState(() => _r = _R.already);
+        log(raw, Outcome.warn, 'Already Scanned');
       } else {
         app.device.ok();
-        _show(Tone.ok, tr('log.got', {'code': code}));
+        setState(() => _r = _R.got);
         log(raw, Outcome.ok);
       }
     } catch (e) {
       app.device.error();
-      _show(e is ApiException && e.kind == FailKind.unknown ? Tone.unknown : Tone.error, errorText(e), raw);
+      setState(() {
+        _r = _R.error;
+        _err = errorText(e);
+      });
       log(raw, outcomeOf(e), errorText(e));
     }
   }
 
-  void _show(Tone t, String title, [String sub = '']) => setState(() {
-        _tone = t;
-        _title = title;
-        _sub = sub;
-      });
-
-  void _reset() => setState(() {
+  void _change() => setState(() {
         _task = {};
         _inbound = false;
-        _title = '';
-        _sub = '';
-        _tone = Tone.info;
+        _r = _R.idle;
       });
 
   @override
@@ -95,39 +89,35 @@ class _LoggingScanPageState extends State<LoggingScanPage> with ScanPageMixin {
     final t = _task;
     final sent = _sentOf(t)..sort();
     final items = jsonList(t['items']);
+    final head = _inbound ? 'Inbound ${asStr(t['unid'])}' : 'Operation Task ${asStr(t['unid'])}';
+    final change = FilledButton(style: elButton(ElType.primary), onPressed: _change, child: const Text('Change Order'));
     return ScanScaffold(
-      title: tr('mod.logging'),
-      prompt: _id == 0 ? tr('log.scanTask') : tr('log.scanToLog'),
+      title: tr('wms.loggingScan'),
+      placeholder: _id == 0 ? 'Task No.' : 'Scan to log',
       busy: busy,
       onManual: manualEntry,
-      actions: [
-        if (_id != 0) IconButton(onPressed: busy ? null : _reset, icon: const Icon(Icons.swap_horiz), tooltip: tr('log.changeTask')),
-      ],
       children: [
-        StatusCard(
-          tone: _title.isEmpty ? Tone.info : _tone,
-          title: _title.isEmpty ? tr('common.waitScan') : _title,
-          subtitle: _title.isEmpty ? tr('log.scanTask') : _sub,
-        ),
-        if (t.isNotEmpty) ...[
-          InfoSection(rows: [
-            (tr('common.orderNo'), asStr(t['unid'])),
-            (tr('common.refNo'), asStr(t['originSN'])),
+        switch (_r) {
+          _R.idle => const ElResult(type: ElType.info, title: 'Please Scan the Order No.'),
+          _R.task => ElResult(type: ElType.success, title: head, subTitle: 'Please confirm the order info and continue!', extra: change),
+          _R.got => ElResult(type: ElType.success, title: 'Got $_code!', subTitle: head, extra: change),
+          _R.already => ElResult(type: ElType.warning, title: '$_code is Already Scanned!', subTitle: 'This number was scanned before!', extra: change),
+          _R.invalid => ElResult(type: ElType.danger, title: '$_code is Invalid!', subTitle: 'Please check what you scanned and try again.'),
+          _R.error => ElResult(type: ElType.danger, title: _err, subTitle: _code),
+        },
+        if (t.isNotEmpty)
+          ElDescriptions(title: 'Order Info', items: [
             (tr('common.customer'), app.session.customerName(asStr(t['agentGUID']))),
-            (tr('common.carrier'), asStr(t['carrier'])),
-            (tr('common.consignee'), asStr(t['recName1'])),
-            (tr('common.country'), asStr(t['recCountry'])),
-            (tr('common.note'), asStr(t['note'])),
-            (tr('common.noteInner'), asStr(t['noteInner'])),
+            ('Already Scanned', sent.isEmpty ? null : Wrap(spacing: 4, runSpacing: 4, children: [for (final s in sent) ElTag(s, type: ElType.success)])),
+            ('Order ID', asStr(t['unid'])),
+            ('Ref. No.', asStr(t['originSN'])),
+            ('Items', items.map((i) => '${asStr(i['sku'] ?? i['itemId'])} * ${asStr(i['qty'])}').join('\n')),
+            ('Consignee', asStr(t['recName1'])),
+            ('Dst. Country', asStr(t['recCountry'])),
+            ('Carrier', asStr(t['carrier'])),
+            ('Remark', asStr(t['note'])),
+            ('Private Remark', asStr(t['noteInner'])),
           ]),
-          if (sent.isNotEmpty)
-            InfoSection(title: '${tr('ship.bundles')} (${sent.length})', rows: [for (final s in sent) ('✔', s)]),
-          if (items.isNotEmpty)
-            InfoSection(
-              title: tr('common.items'),
-              rows: [for (final it in items) (asStr(it['sku'] ?? it['itemId']), '× ${asStr(it['qty'])}')],
-            ),
-        ],
       ],
     );
   }

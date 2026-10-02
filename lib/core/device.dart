@@ -35,6 +35,12 @@ class Device {
     }
   }
 
+  /// Opens the system camera; returns the path of a downscaled JPEG, or null if cancelled.
+  Future<String?> takePhoto() async {
+    final r = await _ch.invokeMethod<String>('takePhoto');
+    return r;
+  }
+
   /// Audible + haptic feedback, honoring the user's settings.
   void feedback(Beep b) {
     if (settings.sound) {

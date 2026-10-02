@@ -4,6 +4,7 @@ import 'api.dart';
 import 'device.dart';
 import 'history.dart';
 import 'net_monitor.dart';
+import 'print_station.dart';
 import 'scanner.dart';
 import 'session.dart';
 import 'settings.dart';
@@ -19,6 +20,7 @@ class AppState {
         ws = WsPrint(settings) {
     session = Session(settings, api);
     net = NetMonitor(api);
+    printer = PrintStation(settings, api);
   }
 
   static Future<AppState> create() async {
@@ -34,6 +36,7 @@ class AppState {
   final WsPrint ws;
   late final Session session;
   late final NetMonitor net;
+  late final PrintStation printer;
 }
 
 class AppScope extends InheritedWidget {

@@ -67,3 +67,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider for the camera intent (RMA photos)
+    implementation("androidx.core:core:1.13.1")
+}

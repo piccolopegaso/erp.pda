@@ -10,18 +10,18 @@ Future<bool> showReloginDialog(BuildContext context, AppState app) async {
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
-      title: Text(tr('login.relogin')),
+      title: Text(tr('pda.login.relogin')),
       scrollable: true,
       content: SizedBox(
         width: 360,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(tr('login.reloginHint')),
+          Text(tr('pda.login.reloginHint')),
           const SizedBox(height: 12),
           LoginForm(lockAccount: true, onSuccess: () => Navigator.of(ctx).pop(true)),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('login.toLoginPage'))),
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('pda.login.toLoginPage'))),
       ],
     ),
   );

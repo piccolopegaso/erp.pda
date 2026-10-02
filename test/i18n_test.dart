@@ -1,11 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mic_pda/core/history.dart';
 import 'package:mic_pda/core/i18n.dart';
 
 void main() {
-  test('every translation has zh, en and de', () {
+  test('every translation has en, zh and de', () {
     for (final e in translationTable.entries) {
       for (final lang in supportedLanguages.keys) {
         expect(e.value[lang], isNotNull, reason: '${e.key} is missing "$lang"');
@@ -14,7 +13,7 @@ void main() {
     }
   });
 
-  test('every literal tr() key used in lib/ exists', () {
+  test('every literal tr() key used in lib/ exists (run tool/sync_web_locale.py after adding web keys)', () {
     final re = RegExp(r"""(?<![A-Za-z0-9_])tr\(\s*'([a-zA-Z0-9_.]+)'""");
     final missing = <String>{};
     for (final f in Directory('lib').listSync(recursive: true).whereType<File>()) {
@@ -26,23 +25,33 @@ void main() {
     expect(missing, isEmpty);
   });
 
-  test('dynamic keys exist', () {
-    for (final o in Outcome.values) {
-      expect(translationTable.containsKey('his.${o.name}'), isTrue, reason: 'his.${o.name}');
-    }
-    for (final m in ['shipping', 'pallet', 'pick', 'logging', 'receiving', 'snswap', 'stock', 'history', 'settings']) {
-      expect(translationTable.containsKey('mod.$m'), isTrue);
-      expect(translationTable.containsKey('mod.$m.desc'), isTrue);
-    }
-    for (final s in ['resolved', 'pending', 'not_found', 'error', 'unknown']) {
-      expect(translationTable.containsKey('plt.resolve.$s'), isTrue);
+  test('keys built at runtime exist', () {
+    for (final k in [
+      'pda.net.offline',
+      'pda.net.slow',
+      'pda.pickScanBatch',
+      'pda.packScanOrder',
+      'wms.picklist',
+      'wms.shippingScan',
+      'wms.loggingScan',
+      'wms.snScan',
+      'wms.palletHandover',
+      'wms.inventory',
+      'common.rma',
+      'common.inbound',
+    ]) {
+      expect(translationTable.containsKey(k), isTrue, reason: k);
     }
   });
 
-  test('placeholders are substituted', () {
-    setLanguage('en');
-    expect(tr('pick.progress', {'a': 2, 'b': 5}), 'Picked 2/5');
+  test('English is the default and web wording is used', () {
+    setLanguage('xx');
+    expect(currentLanguage, 'en');
+    expect(tr('wms.picklist'), 'Picklist');
+    expect(tr('wms.palletHandover'), 'Loading Scan');
     setLanguage('zh');
-    expect(tr('pick.progress', {'a': 2, 'b': 5}), '已拣 2/5');
+    expect(tr('wms.picklist'), '拣料操作');
+    expect(tr('pda.total', {'n': 3}), '共 3 条');
+    setLanguage('en');
   });
 }

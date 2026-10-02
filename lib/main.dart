@@ -8,6 +8,7 @@ import 'core/app_state.dart';
 import 'core/i18n.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
+import 'ui/el.dart';
 import 'ui/relogin_dialog.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -71,8 +72,8 @@ class _PdaAppState extends State<PdaApp> {
       _reloginOpen = false;
       if (ok) {
         messengerKey.currentState?.showSnackBar(SnackBar(
-          content: Text(tr('login.renewed'), style: const TextStyle(fontSize: 15)),
-          backgroundColor: const Color(0xFFEF6C00),
+          content: Text(tr('pda.login.renewed'), style: const TextStyle(fontSize: 15)),
+          backgroundColor: El.warning,
           duration: const Duration(seconds: 5),
         ));
       } else {
@@ -89,16 +90,21 @@ class _PdaAppState extends State<PdaApp> {
       child: MaterialApp(
         navigatorKey: navigatorKey,
         scaffoldMessengerKey: messengerKey,
-        title: tr('app.title'),
+        title: 'MICLinker PDA',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
+          colorScheme: ColorScheme.fromSeed(seedColor: El.primary, primary: El.primary),
+          scaffoldBackgroundColor: El.bg,
           appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFF1565C0),
-            foregroundColor: Colors.white,
-            toolbarHeight: 50,
+            backgroundColor: Colors.white,
+            foregroundColor: El.textPrimary,
+            surfaceTintColor: Colors.white,
+            elevation: 0.5,
+            shadowColor: Color(0x22000000),
+            toolbarHeight: 48,
           ),
+          textTheme: const TextTheme(bodyMedium: TextStyle(color: El.textRegular)),
           visualDensity: VisualDensity.compact,
           // old PDA GPUs: no fancy page transitions
           pageTransitionsTheme: const PageTransitionsTheme(builders: {

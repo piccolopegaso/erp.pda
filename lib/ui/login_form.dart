@@ -6,6 +6,7 @@ import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../core/session.dart';
 import 'widgets.dart';
+import 'el.dart';
 
 /// Account + password (+ captcha when the device is not yet trusted by the server).
 class LoginForm extends StatefulWidget {
@@ -24,6 +25,7 @@ class _LoginFormState extends State<LoginForm> {
   final _account = TextEditingController();
   final _password = TextEditingController();
   final _captcha = TextEditingController();
+  final _captchaFocus = FocusNode();
   CaptchaChallenge? _challenge;
   bool _needCaptcha = true;
   bool _loading = false;
@@ -44,6 +46,7 @@ class _LoginFormState extends State<LoginForm> {
     _account.dispose();
     _password.dispose();
     _captcha.dispose();
+    _captchaFocus.dispose();
     super.dispose();
   }
 
@@ -75,7 +78,7 @@ class _LoginFormState extends State<LoginForm> {
     final acc = _account.text.trim();
     final pwd = _password.text;
     if (acc.isEmpty || pwd.isEmpty || (_needCaptcha && _captcha.text.trim().isEmpty)) {
-      setState(() => _error = tr('login.required'));
+      setState(() => _error = tr('pda.login.required'));
       return;
     }
     setState(() {
@@ -95,7 +98,7 @@ class _LoginFormState extends State<LoginForm> {
       widget.onSuccess();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = tr('login.failed', {'msg': errorText(e)}));
+      setState(() => _error = tr('pda.login.failed', {'msg': errorText(e)}));
       app.device.error();
       // a captcha is single-use; also re-check whether this device is still trusted
       _needCaptcha = true;
@@ -116,7 +119,7 @@ class _LoginFormState extends State<LoginForm> {
           enabled: !widget.lockAccount,
           keyboardType: TextInputType.emailAddress,
           autocorrect: false,
-          decoration: InputDecoration(labelText: tr('login.account'), prefixIcon: const Icon(Icons.person)),
+          decoration: InputDecoration(labelText: tr('pda.login.account'), prefixIcon: const Icon(Icons.person)),
           onEditingComplete: _prepare,
         ),
         const SizedBox(height: 10),
@@ -124,14 +127,17 @@ class _LoginFormState extends State<LoginForm> {
           controller: _password,
           obscureText: !_showPwd,
           decoration: InputDecoration(
-            labelText: tr('login.password'),
+            labelText: tr('common.password'),
             prefixIcon: const Icon(Icons.lock),
-            suffixIcon: IconButton(
-              icon: Icon(_showPwd ? Icons.visibility_off : Icons.visibility),
-              onPressed: () => setState(() => _showPwd = !_showPwd),
+            suffixIcon: ExcludeFocus(
+              child: IconButton(
+                icon: Icon(_showPwd ? Icons.visibility_off : Icons.visibility),
+                onPressed: () => setState(() => _showPwd = !_showPwd),
+              ),
             ),
           ),
-          onSubmitted: (_) => _needCaptcha ? null : _submit(),
+          textInputAction: _needCaptcha ? TextInputAction.next : TextInputAction.done,
+          onSubmitted: (_) => _needCaptcha ? _captchaFocus.requestFocus() : _submit(),
         ),
         if (_needCaptcha) ...[
           const SizedBox(height: 10),
@@ -139,8 +145,9 @@ class _LoginFormState extends State<LoginForm> {
             Expanded(
               child: TextField(
                 controller: _captcha,
+                focusNode: _captchaFocus,
                 autocorrect: false,
-                decoration: InputDecoration(labelText: tr('login.captcha'), prefixIcon: const Icon(Icons.verified_user)),
+                decoration: InputDecoration(labelText: tr('common.captcha'), prefixIcon: const Icon(Icons.verified_user)),
                 onSubmitted: (_) => _submit(),
               ),
             ),
@@ -153,7 +160,7 @@ class _LoginFormState extends State<LoginForm> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
                 child: _challenge == null || _challenge!.imageBase64.isEmpty
-                    ? Text(tr('login.captchaTap'), style: const TextStyle(fontSize: 11))
+                    ? Text(tr('pda.login.captchaTap'), style: const TextStyle(fontSize: 11))
                     : Image.memory(base64Decode(_challenge!.imageBase64), fit: BoxFit.contain, gaplessPlayback: true),
               ),
             ),
@@ -161,7 +168,7 @@ class _LoginFormState extends State<LoginForm> {
         ],
         if (_error.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Text(_error, style: const TextStyle(color: Color(0xFFC62828))),
+          Text(_error, style: const TextStyle(color: El.danger)),
         ],
         const SizedBox(height: 16),
         FilledButton(
@@ -169,7 +176,7 @@ class _LoginFormState extends State<LoginForm> {
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           child: _loading
               ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-              : Text(tr('login.submit'), style: const TextStyle(fontSize: 17)),
+              : Text(tr('common.login'), style: const TextStyle(fontSize: 17)),
         ),
       ],
     );

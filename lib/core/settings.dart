@@ -64,6 +64,23 @@ class AppSettings extends ChangeNotifier {
   String get server => _str('server', kDefaultServer);
   set server(String v) => _set('server', _normalizeServer(v));
 
+  /// CarrierGate (label service), same pairs as erp.webapp/.env.* (VUE_APP_BASE_API -> VUE_APP_CG_API).
+  /// An explicit value in settings wins.
+  String get cgServer {
+    final custom = _str('cgServer', '');
+    if (custom.isNotEmpty) return custom;
+    const pairs = {
+      'https://api.courrierhub.com': 'https://courrierhub.com',
+      'https://di.courrierhub.com': 'https://a.courrierhub.com',
+      'https://mic.courrierhub.com': 'https://a.courrierhub.com',
+      'https://miccn.courrierhub.com': 'https://cn.courrierhub.com',
+      'https://t.courrierhub.com': 'https://tcg.courrierhub.com',
+    };
+    return pairs[server] ?? server;
+  }
+
+  set cgServer(String v) => _set('cgServer', v.trim().isEmpty ? '' : _normalizeServer(v));
+
   String get origin => _str('origin', kDefaultOrigin);
   set origin(String v) => _set('origin', _normalizeServer(v));
 
@@ -87,7 +104,7 @@ class AppSettings extends ChangeNotifier {
   }
 
   // ---- ui ----
-  String get language => _str('language', 'zh');
+  String get language => _str('language', 'en');
   set language(String v) => _set('language', v);
 
   bool get sound => _bool('sound', true);
@@ -98,6 +115,28 @@ class AppSettings extends ChangeNotifier {
 
   bool get keepScreenOn => _bool('keepScreenOn', true);
   set keepScreenOn(bool v) => _set('keepScreenOn', v);
+
+  // ---- print station (PrintBridge on the packing PC, port 9100) ----
+  /// e.g. "192.168.1.20" or "192.168.1.20:9100"; empty = not configured
+  String get printHost => _str('printHost', '');
+  set printHost(String v) => _set('printHost', v.trim());
+
+  String get printBridgeUrl {
+    var h = printHost.trim();
+    if (h.isEmpty) return '';
+    if (!h.startsWith('http://') && !h.startsWith('https://')) h = 'http://$h';
+    final u = Uri.tryParse(h);
+    if (u == null) return '';
+    return u.hasPort ? '${u.scheme}://${u.host}:${u.port}' : '${u.scheme}://${u.host}:9100';
+  }
+
+  /// Printer name as listed by PrintBridge (GET /printers)
+  String get printer => _str('printer', '');
+  set printer(String v) => _set('printer', v);
+
+  /// web: Pack Scan Order "Auto Print"
+  bool get autoPackScanPrint => _bool('autoPackScanPrint', false);
+  set autoPackScanPrint(bool v) => _set('autoPackScanPrint', v);
 
   // ---- network ----
   /// Seconds to wait for a TCP connection (weak Wi-Fi: keep short, retry is safe here).
